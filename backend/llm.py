@@ -63,11 +63,18 @@ def providers() -> list[Provider]:
     return found
 
 
-def chat(messages: list[dict], model: str | None = None, temperature: float = 0.2) -> str:
+def chat(
+    messages: list[dict],
+    model: str | None = None,
+    temperature: float = 0.2,
+    max_tokens: int | None = None,
+) -> str:
     """Send a chat request and return the assistant's reply text.
 
     Low temperature by default: for summaries we want faithful, repeatable
-    output, not creative writing.
+    output, not creative writing. `max_tokens` caps the reply length; some
+    hosted free tiers reject requests whose possible output exceeds their
+    per-minute output limit, so short-answer calls should set it.
     """
     requested = model or config.TEXT_MODEL
     has_images = any(isinstance(m["content"], list) for m in messages)
@@ -83,6 +90,8 @@ def chat(messages: list[dict], model: str | None = None, temperature: float = 0.
         payload: dict = {"model": use_model, "messages": messages, "temperature": temperature}
         if provider.reasoning_effort:
             payload["reasoning_effort"] = provider.reasoning_effort
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
         try:
             data = _post_with_retries(provider, payload)
         except ProviderUnavailable as exc:
@@ -127,6 +136,13 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
             continue
 
         status = response.status_code
+        if status == 429 and "request too large" in response.text.lower():
+            # Over a per-minute limit in a *single* request: waiting can't
+            # help, so don't spend retries on it. Another provider might fit.
+            raise ProviderUnavailable(
+                "This request is too large for the AI service's rate limits: "
+                f"{response.text[:200]}"
+            )
         if status == 429:
             # Rate limited: wait as long as the provider asks (within reason).
             if last_attempt:

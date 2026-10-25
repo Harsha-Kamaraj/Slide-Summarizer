@@ -79,4 +79,4 @@ def _ask_vision(deck_title: str, slide: Slide, png: bytes) -> str:
             ],
         }
     ]
-    return llm.chat(messages, model=config.VISION_MODEL)
+    return llm.chat(messages, model=config.VISION_MODEL, max_tokens=config.VISION_MAX_TOKENS)

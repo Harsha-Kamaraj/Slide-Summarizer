@@ -130,3 +130,26 @@ def test_image_requests_skip_a_fallback_without_vision(fake_server, with_fallbac
     with pytest.raises(llm.ProviderUnavailable):
         llm.chat(image_message)
     assert set(hosts) == {"primary"}
+
+
+def test_request_too_large_is_not_retried(fake_server, monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm, "_sleep", lambda s: calls.append("slept"))
+
+    def handler(request):
+        calls.append("call")
+        return httpx.Response(429, json={"error": {"message": "Request too large for model x"}})
+
+    fake_server(handler)
+    with pytest.raises(llm.ProviderUnavailable, match="too large"):
+        llm.chat([{"role": "user", "content": "hi"}])
+    assert calls == ["call"]  # no waiting, no retries
+
+
+def test_max_tokens_is_sent_when_given(fake_server):
+    bodies = []
+    fake_server(lambda request: bodies.append(request.read()) or ok_reply("ok"))
+    llm.chat([{"role": "user", "content": "hi"}], max_tokens=900)
+    llm.chat([{"role": "user", "content": "hi"}])
+    assert b'"max_tokens":900' in bodies[0].replace(b" ", b"")
+    assert b"max_tokens" not in bodies[1]
