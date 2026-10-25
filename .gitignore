@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Secrets (API keys for hosted LLMs live only in env vars)
+.env
+
+# macOS
+.DS_Store
+
+# Lecture files belong to the college; never commit them
+eval/sample_decks/
+
+# Generated output
+summary.pdf
+*.summary.pdf
