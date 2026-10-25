@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Progress goes to stderr so stdout is just the summary (pipeable to a file).
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # hide per-request lines
 
     start = time.perf_counter()
     try:
