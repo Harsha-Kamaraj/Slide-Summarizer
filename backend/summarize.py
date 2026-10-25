@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 LENGTH_INSTRUCTIONS = {
-    "short": "Keep it short: at most 4 topics with 3-4 bullets each, and only the most important terms.",
+    "short": "Keep it short: at most 4 topics with 3-4 bullets each, and at most 8 terms (the most important ones).",
     "detailed": "Be thorough: keep every distinct idea, definition, formula and step from the notes.",
 }
 

@@ -17,7 +17,7 @@ Output ONE Markdown document in exactly this structure. Use the "# " title once 
 
 ## Important Terms
 - **<Term>**: <one-line definition>
-(each term once, only terms defined in the notes)
+(each concept once: if the notes use two names for the same idea, pick one; only terms defined in the notes. Key Points should explain ideas, steps and relationships; don't repeat a term's definition word-for-word in both sections)
 
 Notes:
 $notes

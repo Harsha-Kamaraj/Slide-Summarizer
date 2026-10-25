@@ -130,7 +130,10 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
         story.append(Paragraph("Key Points", styles["h2"]))
         for topic in summary.topics:
             bullets = ListFlowable(
-                [ListItem(Paragraph(_inline(p), styles["body"])) for p in topic.points],
+                [
+                    ListItem(Paragraph(_bold_label(_inline(p)), styles["body"]))
+                    for p in topic.points
+                ],
                 bulletType="bullet",
                 start="•",
                 leftIndent=5 * mm,
@@ -178,6 +181,14 @@ def _inline(text: str) -> str:
     then turn **bold** back into real bold."""
     escaped = html.escape(text, quote=False)
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
+
+
+def _bold_label(text: str) -> str:
+    """Bold a short leading label ("Feature Space: ...") so bullets are easy to scan."""
+    label, sep, rest = text.partition(":")
+    if sep and rest and len(label.split()) <= 5 and "<b>" not in label:
+        return f"<b>{label}:</b>{rest}"
+    return text
 
 
 def _register_fonts() -> tuple[str, str]:

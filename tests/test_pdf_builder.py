@@ -54,3 +54,14 @@ def test_pdf_contains_text_including_special_characters():
     assert "χ" in text  # needs a Unicode font, not built-in Helvetica
     assert "most specific" in text
     assert "From 2.pdf" in text
+
+
+def test_short_leading_labels_are_bolded():
+    from backend.pdf_builder import _bold_label
+
+    assert (
+        _bold_label("Feature Space: all combinations") == "<b>Feature Space:</b> all combinations"
+    )
+    # A long sentence that happens to contain a colon is left alone.
+    long = "The algorithm in this lecture works as follows: start specific"
+    assert _bold_label(long) == long
