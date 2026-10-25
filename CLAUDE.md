@@ -131,7 +131,7 @@ Students will not install Python, LibreOffice or Ollama, so for real use:
 
 ## Commands
 - Install Ollama models: `ollama pull <model>` (names from `config.py`)
-- Backend: `cd backend && pip install -r requirements.txt && uvicorn main:app --reload --port 8000`
+- Backend (from the repo root): `.venv/bin/pip install -r backend/requirements.txt && .venv/bin/uvicorn backend.main:app --reload --port 8000` (see DECISIONS.md #6)
 - Tests: `pytest`
 - Load the extension: Chrome → `chrome://extensions` → Developer mode → Load unpacked → select `extension/`
 

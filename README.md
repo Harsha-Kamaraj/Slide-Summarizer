@@ -24,3 +24,24 @@ The Markdown summary is also printed to stdout. Supports `.pptx`, `.ppt` and `.p
 ```bash
 .venv/bin/pytest
 ```
+
+## API (Stage 3)
+Start the backend from the repo root:
+
+```bash
+.venv/bin/uvicorn backend.main:app --reload --port 8000
+```
+
+```bash
+curl localhost:8000/health
+# {"status":"ok","ollama":true}
+
+curl -F file=@path/to/deck.pdf -F mode=detailed localhost:8000/summarize -o summary.pdf
+```
+
+| Error | Status |
+|---|---|
+| Unsupported file type | 415 |
+| File too large (`MAX_UPLOAD_MB`) | 413 |
+| Corrupt / unreadable file | 422 |
+| LLM server down or model missing | 503 |
