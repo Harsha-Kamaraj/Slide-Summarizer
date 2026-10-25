@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-# name -> (prompt file, how many items per mode, the Markdown heading it writes)
+# name -> (prompt file, how many items to ask for in each mode)
 EXTRAS = {
     "exam_questions": ("extras_exam_questions", {"short": 5, "detailed": 8}),
     "flashcards": ("extras_flashcards", {"short": 10, "detailed": 15}),
@@ -41,6 +41,12 @@ def generate_extra(extra: str, summary: str, mode: str) -> str:
     section = llm.chat(
         [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
     ).strip()
+
+    # A card or question whose answer is "not covered in slides" teaches
+    # nothing; drop those lines.
+    section = "\n".join(
+        line for line in section.splitlines() if "not covered in slides" not in line.lower()
+    )
 
     # Check the answer actually parses into items before using it. A missing
     # extra is better than a broken section in the student's PDF.

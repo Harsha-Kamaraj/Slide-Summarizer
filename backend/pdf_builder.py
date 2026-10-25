@@ -108,13 +108,23 @@ _ANSWER = re.compile(r"^(?:[-*]\s*)?\**answer\**\s*:\**\s*(.*)", re.IGNORECASE)
 
 
 def _parse_exam_line(line: str, questions: list[tuple[str, str]]) -> None:
-    """ "1. question" starts a question; "Answer: ..." fills in the last one."""
+    """ "1. question" starts a question; "Answer: ..." fills in its answer. Any
+    other line continues whichever came last, e.g. a question that lists a
+    small dataset to trace an algorithm on (kept on its own line)."""
     answer = _ANSWER.match(line)
+    numbered = _NUMBERED.match(line)
     if answer and questions:
         question, _ = questions[-1]
         questions[-1] = (question, answer.group(1).strip())
-    elif numbered := _NUMBERED.match(line):
+    elif numbered:
         questions.append((_strip_bold(numbered.group(2)), ""))
+    elif questions:
+        question, existing = questions[-1]
+        extra = _bullet_text(line) if _is_bullet(line) else line
+        if existing:
+            questions[-1] = (question, f"{existing} {extra}")
+        else:
+            questions[-1] = (f"{question}\n{extra}", "")
 
 
 def _split_flashcard(text: str) -> tuple[str, str] | None:
@@ -204,7 +214,11 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
         story.append(Paragraph("Likely Exam Questions", styles["h2"]))
         for number, (question, answer) in enumerate(summary.exam_questions, start=1):
             block = [
-                Paragraph(f"<b>{_inline(question)}</b>", styles["point"], bulletText=f"{number}.")
+                Paragraph(
+                    f"<b>{_inline(question)}</b>".replace("\n", "<br/>"),
+                    styles["point"],
+                    bulletText=f"{number}.",
+                )
             ]
             if answer:
                 block.append(Paragraph(f"Answer: {_inline(answer)}", styles["answer"]))

@@ -154,3 +154,15 @@ def test_pdf_renders_extras():
     assert "Likely Exam Questions" in text and "Define version space." in text
     assert "Answer: The set of hypotheses" in text
     assert "Flashcards" in text and "Negative examples." in text
+
+
+def test_exam_question_keeps_listed_data_lines():
+    s = parse_summary(
+        "# T\n## Likely Exam Questions\n1. Trace Find-S on:\n   - Senior, City, Yes\n"
+        "   - Junior, Rural, No\n   Answer: h = [Senior, City].\n"
+    )
+    assert s.exam_questions == [
+        ("Trace Find-S on:\nSenior, City, Yes\nJunior, Rural, No", "h = [Senior, City]."),
+    ]
+    with pymupdf.open(stream=build_pdf(s), filetype="pdf") as doc:
+        assert "Junior, Rural, No" in doc[0].get_text()
