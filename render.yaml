@@ -1,0 +1,44 @@
+# Render Blueprint: deploys the backend (Dockerfile) as a free web service.
+# Render → New → Blueprint → pick this repo. Values marked `sync: false` are
+# secrets: Render asks for them in the dashboard; they never live in git.
+services:
+  - type: web
+    name: slide-summarizer
+    runtime: docker
+    plan: free
+    region: singapore # closest Render region to India
+    healthCheckPath: /health
+    envVars:
+      # Main LLM: Groq, models chosen by evaluation (docs/DECISIONS.md #27-28)
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: NOTES_MODEL
+        value: openai/gpt-oss-120b
+      - key: TEXT_MODEL
+        value: openai/gpt-oss-120b
+      - key: VISION_MODEL
+        value: qwen/qwen3.8-27b
+      - key: LLM_REASONING_EFFORT
+        value: low
+      - key: LLM_MAX_RETRIES
+        value: "6"
+      # Fallback when the main model's quota runs out (decision #30)
+      - key: FALLBACK_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: FALLBACK_API_KEY
+        sync: false
+      - key: FALLBACK_MODEL
+        value: openai/gpt-oss-20b
+      - key: FALLBACK_VISION_MODEL
+        value: qwen/qwen3.8-27b
+      - key: FALLBACK_REASONING_EFFORT
+        value: low
+      # Persistent cache: Render wipes the disk when the service sleeps
+      - key: CACHE_HF_REPO
+        value: Hhaarrsshhaa/slide-summarizer-cache
+      - key: HF_TOKEN
+        sync: false
+      - key: DAILY_LIMIT
+        value: "10"

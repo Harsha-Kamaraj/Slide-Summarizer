@@ -168,3 +168,21 @@ def test_exponent_marking_rules():
     assert _exponent("e", "x+1") == "^(x+1)"
     assert _exponent("+", "ve") == "ve"
     assert _exponent("2", " ") == " "
+
+
+def test_pages_without_ruling_lines_skip_table_detection(tmp_path, monkeypatch):
+    import pymupdf
+
+    calls = []
+    real = pymupdf.Page.find_tables
+    monkeypatch.setattr(
+        pymupdf.Page, "find_tables", lambda self, *a, **k: calls.append(1) or real(self, *a, **k)
+    )
+    doc = pymupdf.open()
+    for i in range(4):  # plain text slides, no drawn lines
+        doc.new_page().insert_text((72, 72), f"Slide {i} heading", fontsize=18)
+    path = tmp_path / "plain.pdf"
+    doc.save(path)
+
+    extract_deck(path)
+    assert calls == []  # the expensive detector never ran

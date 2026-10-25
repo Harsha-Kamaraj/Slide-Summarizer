@@ -223,7 +223,9 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
     column a value is in, and it miscounts. Detected tables are instead
     written as "a | b | c" rows, like .pptx tables.
     """
-    tables = page.find_tables().tables
+    # find_tables() is by far the slowest step (~26 s/page on a 0.1-CPU free
+    # host), so only run it on pages with enough ruling lines to hold a grid.
+    tables = page.find_tables().tables if _has_grid_lines(page) else []
     table_rects = [pymupdf.Rect(t.bbox) for t in tables]
 
     # Text blocks outside the tables, in reading order.
@@ -251,6 +253,31 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
         keep = [c for c in range(len(rows[0]) if rows else 0) if any(row[c] for row in rows)]
         lines += [" | ".join(row[c] for c in keep) for row in rows]
     return lines
+
+
+def _has_grid_lines(page: pymupdf.Page) -> bool:
+    """Cheap pre-check (~1 ms/page): does the page draw at least 3 horizontal
+    and 3 vertical lines (or cell rectangles), as a ruled table must? Boxes
+    in diagrams can pass too; that only costs an unnecessary find_tables()."""
+    horizontal = vertical = 0
+    for drawing in page.get_drawings():
+        for item in drawing["items"]:
+            if item[0] == "l":
+                start, end = item[1], item[2]
+                if abs(start.y - end.y) < 1 and abs(start.x - end.x) > 20:
+                    horizontal += 1
+                elif abs(start.x - end.x) < 1 and abs(start.y - end.y) > 10:
+                    vertical += 1
+            elif item[0] == "re":
+                rect = item[1]
+                if rect.width > 20 and rect.height < 2:  # a thin rectangle used as a line
+                    horizontal += 1
+                elif rect.height > 10 and rect.width < 2:
+                    vertical += 1
+                elif rect.width > 20 and rect.height > 8:  # a cell: two edges each way
+                    horizontal += 2
+                    vertical += 2
+    return horizontal >= 3 and vertical >= 3
 
 
 _SUPERSCRIPT_FLAG = 1  # PyMuPDF span flag bit for superscript text

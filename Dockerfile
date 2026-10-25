@@ -24,13 +24,14 @@ USER app
 # Cache and feedback live in the home folder (created at runtime). Many hosts
 # wipe the disk on restart: point CACHE_DIR/FEEDBACK_FILE at a persistent
 # volume (e.g. /data on Hugging Face with storage attached) to keep them.
+# One job at a time: two PDFs at once can exceed a 512 MB free instance.
 ENV HOME=/home/app \
     PORT=7860 \
     CACHE_DIR=/home/app/data/cache \
     FEEDBACK_FILE=/home/app/data/feedback.jsonl \
     DAILY_LIMIT=10 \
     TRUST_PROXY_HEADERS=1 \
-    JOB_WORKERS=2 \
+    JOB_WORKERS=1 \
     LLM_PARALLEL_CALLS=4 \
     LLM_REASONING_EFFORT=
 
