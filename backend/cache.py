@@ -16,7 +16,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from backend import config
+from backend import config, extras
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +27,28 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 PIPELINE_VERSION = "1"
 
 
-def cache_key(content_hash: str, mode: str) -> str:
+# Prompt files that shape the summary itself. Extras have their own prompt, so
+# tweaking the flashcard prompt doesn't throw away every cached summary.
+SUMMARY_PROMPTS = ("system", "chunk_notes", "final_summary", "vision_slide")
+
+
+def cache_key(content_hash: str, mode: str, part: str = "summary") -> str:
     """Key on the file's bytes, not its URL or name: PESU gives a different
     signed URL on every click, but the same lecture has the same bytes.
 
-    The key also covers everything that changes the output (mode, prompts,
-    models), so editing a prompt or switching models never serves a stale
-    summary written under the old setup.
+    `part` is "summary" or an extra ("flashcards", ...); each is cached on its
+    own, so asking for flashcards later reuses the cached summary. The key also
+    covers everything that changes that part's output (mode, prompts, models),
+    so editing a prompt or switching models never serves a stale result.
     """
-    parts = [
-        content_hash,
-        mode,
-        PIPELINE_VERSION,
-        config.NOTES_MODEL,
-        config.TEXT_MODEL,
-        f"vision={config.VISION_ENABLED}:{config.VISION_MODEL}",
-    ]
-    for prompt in sorted(PROMPTS_DIR.glob("*.txt")):
-        parts.append(hashlib.sha256(prompt.read_bytes()).hexdigest())
+    parts = [content_hash, mode, part, PIPELINE_VERSION, config.TEXT_MODEL]
+    if part == "summary":
+        parts += [config.NOTES_MODEL, f"vision={config.VISION_ENABLED}:{config.VISION_MODEL}"]
+        prompts = SUMMARY_PROMPTS
+    else:
+        prompts = ("system", extras.prompt_name(part))
+    for name in prompts:
+        parts.append(hashlib.sha256((PROMPTS_DIR / f"{name}.txt").read_bytes()).hexdigest())
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 

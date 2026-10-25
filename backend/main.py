@@ -14,10 +14,9 @@ import httpx
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from backend import cache, config, llm
+from backend import config, llm, service
 from backend.extract import ExtractionError
 from backend.pdf_builder import build_pdf, parse_summary
-from backend.summarize import summarize_file
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -53,17 +52,17 @@ def _llm_reachable() -> bool:
 # A plain `def` (not `async def`) on purpose: summarizing blocks for minutes
 # while waiting on the model. FastAPI runs sync endpoints in a worker thread,
 # so other requests (like /health) keep being served meanwhile.
+Mode = Literal["short", "detailed"]
+Extra = Literal["exam_questions", "flashcards"]
+
+
 @app.post("/summarize")
 def summarize(
     file: UploadFile,
-    mode: Literal["short", "detailed"] = Form("detailed"),
+    mode: Mode = Form("detailed"),
+    extras: list[Extra] = Form([]),
 ) -> Response:
-    filename = Path(file.filename or "upload").name
-    suffix = Path(filename).suffix.lower()
-    if suffix not in config.ALLOWED_EXTENSIONS:
-        allowed = ", ".join(config.ALLOWED_EXTENSIONS)
-        raise HTTPException(415, f"Unsupported file type '{suffix}'. Allowed: {allowed}")
-
+    filename = _check_filename(file)
     start = time.perf_counter()
     # The upload only lives in a temp folder for the length of this request
     # (privacy: we never keep students' files). It keeps its original name so
@@ -72,23 +71,43 @@ def summarize(
         saved = Path(tmp_dir) / filename
         with saved.open("wb") as destination:
             content_hash = _save_upload(file, destination)
+        markdown, from_cache = _run_pipeline(saved, content_hash, mode, extras)
 
-        key = cache.cache_key(content_hash, mode)
-        with cache.lock(key):
-            markdown = cache.get(key)
-            cache_status = "HIT" if markdown else "MISS"
-            if markdown is None:
-                markdown = _summarize_file(saved, mode)
-                cache.put(key, markdown)
-
-    pdf = build_pdf(parse_summary(markdown), source_name=filename)
+    cache_status = "HIT" if from_cache else "MISS"
     logger.info(
-        "Summarized %s (mode=%s, cache %s) in %.1fs",
+        "Summarized %s (mode=%s, extras=%s, cache %s) in %.1fs",
         filename,
         mode,
+        ",".join(extras) or "none",
         cache_status,
         time.perf_counter() - start,
     )
+    return _pdf_response(markdown, filename, cache_status)
+
+
+def _check_filename(file: UploadFile) -> str:
+    filename = Path(file.filename or "upload").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in config.ALLOWED_EXTENSIONS:
+        allowed = ", ".join(config.ALLOWED_EXTENSIONS)
+        raise HTTPException(415, f"Unsupported file type '{suffix}'. Allowed: {allowed}")
+    return filename
+
+
+def _run_pipeline(path: Path, content_hash: str, mode: str, extras: list[str], progress=None):
+    # dict.fromkeys drops duplicates but keeps the order the student chose.
+    extras = list(dict.fromkeys(extras))
+    try:
+        return service.run(path, content_hash, mode, extras, progress or service.no_progress)
+    except ExtractionError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except llm.LLMError as exc:
+        logger.error("LLM failure for %s: %s", path.name, exc)
+        raise HTTPException(503, f"The summarizer is unavailable right now: {exc}") from exc
+
+
+def _pdf_response(markdown: str, filename: str, cache_status: str) -> Response:
+    pdf = build_pdf(parse_summary(markdown), source_name=filename)
     download_name = f"{Path(filename).stem}_summary.pdf"
     return Response(
         content=pdf,
@@ -98,16 +117,6 @@ def summarize(
             "X-Cache": cache_status,
         },
     )
-
-
-def _summarize_file(path: Path, mode: str) -> str:
-    try:
-        return summarize_file(path, mode=mode)
-    except ExtractionError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    except llm.LLMError as exc:
-        logger.error("LLM failure for %s: %s", path.name, exc)
-        raise HTTPException(503, f"The summarizer is unavailable right now: {exc}") from exc
 
 
 def _save_upload(upload: UploadFile, destination) -> str:

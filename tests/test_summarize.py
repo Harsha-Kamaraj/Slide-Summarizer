@@ -134,3 +134,15 @@ def test_parallel_map_keeps_chunk_order_and_uses_notes_model(monkeypatch):
     assert set(models) == {"small-model"}
     # Notes reach the merge in slide order even though calls finished in any order.
     assert result.index("notes for 1") < result.index("notes for 2") < result.index("notes for 4")
+
+
+def test_progress_messages_follow_the_work(fake_llm, monkeypatch):
+    monkeypatch.setattr(config, "CHUNK_SIZE", 2)
+    messages = []
+    summarize.summarize_deck(make_deck(5), progress=messages.append)
+    assert messages == [
+        "Summarizing part 1/3…",
+        "Summarizing part 2/3…",
+        "Summarizing part 3/3…",
+        "Putting the summary together…",
+    ]

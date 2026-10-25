@@ -81,7 +81,7 @@ def test_pipeline_skips_vision_when_disabled(mixed_pdf, monkeypatch):
     calls = []
     monkeypatch.setattr(config, "VISION_ENABLED", False)
     monkeypatch.setattr(summarize, "describe_image_slides", lambda *a: calls.append(a))
-    monkeypatch.setattr(summarize, "summarize_deck", lambda deck, mode: "summary")
+    monkeypatch.setattr(summarize, "summarize_deck", lambda deck, mode, progress=None: "summary")
 
     assert summarize.summarize_file(mixed_pdf) == "summary"
     assert calls == []

@@ -6,7 +6,9 @@ CLI:  python -m backend.summarize path/to/deck.pptx [--mode short|detailed] [-o 
 import argparse
 import logging
 import sys
+import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
@@ -59,16 +61,29 @@ def load_prompt(name: str) -> Template:
     return Template((PROMPTS_DIR / f"{name}.txt").read_text())
 
 
-def summarize_file(path: str | Path, mode: str = "detailed") -> str:
+def summarize_file(
+    path: str | Path, mode: str = "detailed", progress: Callable[[str], None] | None = None
+) -> str:
     """The whole pipeline for one file: extract text, describe image-heavy
-    slides with the vision model, then summarize. Used by the CLI and the API."""
+    slides with the vision model, then summarize. Used by the CLI and the API.
+
+    `progress` receives short status messages ("Summarizing part 3/8") that
+    the extension shows to students while they wait.
+    """
+    report = progress or (lambda _: None)
+    report("Reading slides…")
     deck = extract_deck(path)
     if config.VISION_ENABLED:
-        describe_image_slides(deck, path)
-    return summarize_deck(deck, mode=mode)
+        heavy = sum(s.is_image_heavy for s in deck.slides)
+        if heavy:
+            report(f"Reading {min(heavy, config.MAX_VISION_SLIDES)} diagram slides…")
+            describe_image_slides(deck, path)
+    return summarize_deck(deck, mode=mode, progress=report)
 
 
-def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
+def summarize_deck(
+    deck: Deck, mode: str = "detailed", progress: Callable[[str], None] | None = None
+) -> str:
     """Return a Markdown summary of the deck."""
     if mode not in LENGTH_INSTRUCTIONS:
         raise ValueError(f"mode must be one of {list(LENGTH_INSTRUCTIONS)}")
@@ -91,7 +106,12 @@ def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
     # each other, so they can run in parallel; map() keeps the results in order.
     chunk_prompt = load_prompt("chunk_notes")
 
+    report = progress or (lambda _: None)
+    done = 0
+    done_lock = threading.Lock()  # chunks may finish on parallel threads
+
     def chunk_notes(numbered_chunk: tuple[int, list[Slide]]) -> str:
+        nonlocal done
         i, chunk = numbered_chunk
         logger.info(
             "Summarizing chunk %d/%d (slides %d-%d)",
@@ -107,13 +127,20 @@ def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
             detail_instructions=NOTES_INSTRUCTIONS[mode],
             slides=format_slides(chunk),
         )
-        return _ask(system, prompt, model=config.NOTES_MODEL)
+        notes = _ask(system, prompt, model=config.NOTES_MODEL)
+        with done_lock:
+            done += 1
+            if done < len(chunks):
+                report(f"Summarizing part {done + 1}/{len(chunks)}…")
+        return notes
 
+    report(f"Summarizing part 1/{len(chunks)}…")
     with ThreadPoolExecutor(max_workers=max(1, config.LLM_PARALLEL_CALLS)) as pool:
         notes = list(pool.map(chunk_notes, enumerate(chunks, start=1)))
 
     # Reduce: merge all chunk notes into one structured document.
     logger.info("Merging %d sections into the final summary", len(notes))
+    report("Putting the summary together…")
     final_prompt = load_prompt("final_summary").substitute(
         deck_title=deck.title,
         length_instructions=LENGTH_INSTRUCTIONS[mode],

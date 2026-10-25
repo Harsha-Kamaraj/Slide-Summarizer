@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import config, llm, main
+from backend import config, llm, main, service
 
 client = TestClient(main.app)
 
@@ -23,12 +23,12 @@ An overview.
 def fake_summarizer(monkeypatch):
     calls = {}
 
-    def fake(path, mode):
+    def fake(path, mode, progress=None):
         calls["mode"] = mode
         calls["filename"] = Path(path).name
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_file", fake)
+    monkeypatch.setattr(service, "summarize_file", fake)
     return calls
 
 
@@ -87,10 +87,10 @@ def test_corrupt_file_gives_clear_error(tmp_path):
 
 
 def test_llm_down_gives_503_with_reason(sample_pdf, monkeypatch):
-    def fail(path, mode):
+    def fail(path, mode, progress=None):
         raise llm.LLMError("Can't reach the LLM server. Start it with 'ollama serve'.")
 
-    monkeypatch.setattr(main, "summarize_file", fail)
+    monkeypatch.setattr(service, "summarize_file", fail)
     response = upload(sample_pdf)
     assert response.status_code == 503
     assert "ollama serve" in response.json()["detail"]
@@ -99,12 +99,12 @@ def test_llm_down_gives_503_with_reason(sample_pdf, monkeypatch):
 def test_uploaded_file_is_not_kept(sample_pdf, monkeypatch):
     seen = []
 
-    def spy(path, mode):
+    def spy(path, mode, progress=None):
         seen.append(Path(path))
         assert seen[0].exists()  # present while being summarized
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_file", spy)
+    monkeypatch.setattr(service, "summarize_file", spy)
     upload(sample_pdf)
     assert seen and not seen[0].exists()  # deleted after the request
 
@@ -112,11 +112,11 @@ def test_uploaded_file_is_not_kept(sample_pdf, monkeypatch):
 def test_same_file_is_served_from_cache(sample_pdf, monkeypatch):
     calls = []
 
-    def fake(path, mode):
+    def fake(path, mode, progress=None):
         calls.append(mode)
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_file", fake)
+    monkeypatch.setattr(service, "summarize_file", fake)
 
     first = upload(sample_pdf)
     second = upload(sample_pdf)
@@ -153,12 +153,12 @@ def test_cached_pdf_shows_each_students_filename(sample_pdf, tmp_path, fake_summ
 
 
 def test_failed_summaries_are_not_cached(sample_pdf, monkeypatch):
-    def fail(path, mode):
+    def fail(path, mode, progress=None):
         raise llm.LLMError("model down")
 
-    monkeypatch.setattr(main, "summarize_file", fail)
+    monkeypatch.setattr(service, "summarize_file", fail)
     assert upload(sample_pdf).status_code == 503
-    monkeypatch.setattr(main, "summarize_file", lambda path, mode: FAKE_SUMMARY)
+    monkeypatch.setattr(service, "summarize_file", lambda path, mode, progress=None: FAKE_SUMMARY)
     assert upload(sample_pdf).headers["x-cache"] == "MISS"
 
 
@@ -170,12 +170,12 @@ def test_simultaneous_requests_for_same_deck_summarize_once(sample_pdf, monkeypa
 
     calls = []
 
-    def slow_fake(path, mode):
+    def slow_fake(path, mode, progress=None):
         calls.append(mode)
         time.sleep(0.3)
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_file", slow_fake)
+    monkeypatch.setattr(service, "summarize_file", slow_fake)
     results = []
     threads = [
         threading.Thread(target=lambda: results.append(upload(sample_pdf))) for _ in range(2)
@@ -187,3 +187,54 @@ def test_simultaneous_requests_for_same_deck_summarize_once(sample_pdf, monkeypa
 
     assert len(calls) == 1
     assert sorted(r.headers["x-cache"] for r in results) == ["HIT", "MISS"]
+
+
+FAKE_FLASHCARDS = "## Flashcards\n- Q: What is a term? | A: A definition."
+FAKE_QUESTIONS = "## Likely Exam Questions\n1. Define a term.\n   Answer: A definition."
+
+
+@pytest.fixture
+def fake_extras(monkeypatch):
+    calls = []
+
+    def fake(extra, summary, mode):
+        calls.append(extra)
+        return FAKE_FLASHCARDS if extra == "flashcards" else FAKE_QUESTIONS
+
+    monkeypatch.setattr(service, "generate_extra", fake)
+    return calls
+
+
+def pdf_text(response) -> str:
+    import pymupdf
+
+    with pymupdf.open(stream=response.content, filetype="pdf") as doc:
+        return "".join(page.get_text() for page in doc)
+
+
+def test_extras_are_added_to_the_pdf(sample_pdf, fake_summarizer, fake_extras):
+    response = upload(sample_pdf, extras=["exam_questions", "flashcards"])
+    text = pdf_text(response)
+    assert "Likely Exam Questions" in text and "Define a term." in text
+    assert "Flashcards" in text and "A definition." in text
+    assert fake_extras == ["exam_questions", "flashcards"]
+
+
+def test_adding_extras_later_reuses_the_cached_summary(sample_pdf, monkeypatch, fake_extras):
+    summaries = []
+    monkeypatch.setattr(
+        service,
+        "summarize_file",
+        lambda path, mode, progress=None: summaries.append(1) or FAKE_SUMMARY,
+    )
+    upload(sample_pdf)  # summary only
+    response = upload(sample_pdf, extras=["flashcards"])  # flashcards later
+
+    assert len(summaries) == 1  # summary came from the cache
+    assert fake_extras == ["flashcards"]
+    assert response.headers["x-cache"] == "MISS"  # flashcards were new
+    assert upload(sample_pdf, extras=["flashcards"]).headers["x-cache"] == "HIT"
+
+
+def test_unknown_extra_is_rejected(sample_pdf, fake_summarizer):
+    assert upload(sample_pdf, extras=["essay"]).status_code == 422
