@@ -12,7 +12,9 @@ def fake_llm(monkeypatch):
 
     def fake_chat(messages, **kwargs):
         prompts.append(messages[-1]["content"])
-        return f"notes #{len(prompts)}"
+        # Well-formed reply so the structure check doesn't trigger a fix-up call.
+        n = len(prompts)
+        return f"# T\n## Overview\nnotes #{n}\n## Key Points\n## Important Terms"
 
     monkeypatch.setattr(summarize.llm, "chat", fake_chat)
     return prompts
@@ -60,3 +62,38 @@ def test_prompts_with_braces_do_not_break_templates(fake_llm):
     deck = Deck(title="Sets", slides=[Slide(number=1, title="A = {1, 2}", text="f(x) {}")])
     summarize.summarize_deck(deck)
     assert "A = {1, 2}" in fake_llm[0]
+
+
+GOOD_SUMMARY = """# Topic
+## Overview
+text
+## Key Points
+### A
+- point
+## Important Terms
+- **X**: y"""
+
+
+def test_structure_check_accepts_valid_summary():
+    assert summarize.structure_problem(GOOD_SUMMARY) is None
+
+
+def test_structure_check_catches_repeated_sections():
+    bad = GOOD_SUMMARY + "\n## Find-S\n## Overview\nmore"
+    assert "expected sections" in summarize.structure_problem(bad)
+
+
+def test_malformed_summary_gets_one_fix_attempt(monkeypatch):
+    replies = iter(["notes", "# T\n## Overview\n## Overview", GOOD_SUMMARY])
+    calls = []
+
+    def fake_chat(messages, **kwargs):
+        calls.append(messages)
+        return next(replies)
+
+    monkeypatch.setattr(summarize.llm, "chat", fake_chat)
+    result = summarize.summarize_deck(make_deck(2))
+
+    assert result == GOOD_SUMMARY
+    assert len(calls) == 3  # map, reduce, fix
+    assert "did not follow the required structure" in calls[2][-1]["content"]

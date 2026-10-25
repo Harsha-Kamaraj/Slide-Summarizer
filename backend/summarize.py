@@ -72,7 +72,48 @@ def summarize_deck(deck: Deck, mode: str = "short") -> str:
         length_instructions=LENGTH_INSTRUCTIONS[mode],
         notes="\n\n".join(notes),
     )
-    return _ask(system, final_prompt)
+    summary = _ask(system, final_prompt)
+
+    # The PDF builder relies on each section heading appearing exactly once.
+    # Small models occasionally repeat the template mid-document, so give the
+    # model one chance to fix it rather than shipping a malformed summary.
+    problem = structure_problem(summary)
+    if problem:
+        logger.warning("Summary structure invalid (%s); asking the model to fix it", problem)
+        summary = llm.chat(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": final_prompt},
+                {"role": "assistant", "content": summary},
+                {"role": "user", "content": FIX_STRUCTURE_PROMPT.format(problem=problem)},
+            ]
+        )
+        problem = structure_problem(summary)
+        if problem:
+            logger.warning("Summary structure still invalid (%s); using it anyway", problem)
+    return summary
+
+
+REQUIRED_SECTIONS = ("## Overview", "## Key Points", "## Important Terms")
+
+FIX_STRUCTURE_PROMPT = (
+    "Your answer did not follow the required structure: {problem}. "
+    "Rewrite it as ONE document: a single '# ' title line, then each of "
+    "'## Overview', '## Key Points' and '## Important Terms' exactly once, in that order. "
+    "Put every topic under '## Key Points' as a '### ' heading. Keep all the content."
+)
+
+
+def structure_problem(summary: str) -> str | None:
+    """Return what's wrong with the summary's heading structure, or None if it's fine."""
+    lines = [line.strip() for line in summary.splitlines()]
+    titles = [line for line in lines if line.startswith("# ")]
+    if len(titles) != 1:
+        return f"expected 1 title line starting with '# ', found {len(titles)}"
+    level2 = [line for line in lines if line.startswith("## ")]
+    if tuple(level2) != REQUIRED_SECTIONS:
+        return f"expected sections {list(REQUIRED_SECTIONS)}, found {level2}"
+    return None
 
 
 def format_slides(slides: list[Slide]) -> str:
