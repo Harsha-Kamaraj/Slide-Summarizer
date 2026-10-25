@@ -45,6 +45,20 @@ curl -F file=@path/to/deck.pdf -F mode=detailed localhost:8000/summarize -o summ
 | File too large (`MAX_UPLOAD_MB`) | 413 |
 | Corrupt / unreadable file | 422 |
 | LLM server down or model missing | 503 |
+| Over today's limit of new summaries (`DAILY_LIMIT`) | 429 |
+
+The extension uses the job endpoints, which report progress:
+
+```bash
+curl -F file=@deck.pdf -F mode=short -F extras=flashcards localhost:8000/jobs   # {"job_id": "..."}
+curl localhost:8000/jobs/<job_id>          # {"status": "running", "progress": "Summarizing part 2/5…", ...}
+curl localhost:8000/jobs/<job_id>/pdf -o summary.pdf
+```
+
+Extras: add `-F extras=exam_questions` and/or `-F extras=flashcards` to either endpoint.
+
+## Deployment (Stage 8)
+See [docs/DEPLOY.md](docs/DEPLOY.md) (Docker image, free hosting, hosted LLM, sharing the extension) and [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Chrome extension (Stage 4)
 1. Start the backend (see above) and make sure Ollama is running.
