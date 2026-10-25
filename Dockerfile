@@ -17,15 +17,17 @@ COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend backend
 
-RUN mkdir -p /data && chown app /data
 USER app
 
 # Production defaults; the LLM provider and keys come from the host's secret
 # settings (LLM_BASE_URL, LLM_API_KEY, TEXT_MODEL, ...), never the image.
+# Cache and feedback live in the home folder (created at runtime). Many hosts
+# wipe the disk on restart: point CACHE_DIR/FEEDBACK_FILE at a persistent
+# volume (e.g. /data on Hugging Face with storage attached) to keep them.
 ENV HOME=/home/app \
     PORT=7860 \
-    CACHE_DIR=/data/cache \
-    FEEDBACK_FILE=/data/feedback.jsonl \
+    CACHE_DIR=/home/app/data/cache \
+    FEEDBACK_FILE=/home/app/data/feedback.jsonl \
     DAILY_LIMIT=10 \
     TRUST_PROXY_HEADERS=1 \
     JOB_WORKERS=2 \
