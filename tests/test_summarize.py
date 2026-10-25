@@ -14,7 +14,7 @@ def fake_llm(monkeypatch):
         prompts.append(messages[-1]["content"])
         # Well-formed reply so the structure check doesn't trigger a fix-up call.
         n = len(prompts)
-        return f"# T\n## Overview\nnotes #{n}\n## Key Points\n## Important Terms"
+        return f"# T\n## Overview\nnotes #{n}\n## Key Points"
 
     monkeypatch.setattr(summarize.llm, "chat", fake_chat)
     return prompts
@@ -72,9 +72,7 @@ GOOD_SUMMARY = """# Topic
 text
 ## Key Points
 ### A
-- point
-## Important Terms
-- **X**: y"""
+- point"""
 
 
 def test_structure_check_accepts_valid_summary():
@@ -117,7 +115,7 @@ def test_parallel_map_keeps_chunk_order_and_uses_notes_model(monkeypatch):
         if "revision notes written section by section" in content:  # reduce step
             # Echo the notes (minus the template's headings) so order can be checked.
             notes = content.replace("#", "")
-            return "# T\n## Overview\n" + notes + "\n## Key Points\n## Important Terms"
+            return "# T\n## Overview\n" + notes + "\n## Key Points"
         with lock:
             models.append(model)
             active[0] += 1
@@ -146,3 +144,43 @@ def test_progress_messages_follow_the_work(fake_llm, monkeypatch):
         "Summarizing part 3/3…",
         "Putting the summary together…",
     ]
+
+
+def test_terms_come_from_grounded_chunk_definitions():
+    chunks = [
+        [
+            Slide(
+                number=1,
+                title="Version Space",
+                text="Version space is the set of all hypotheses consistent with the training data",
+            )
+        ],
+        [
+            Slide(
+                number=2,
+                title="Limitations",
+                text="Find-S does not provide a backtracking technique",
+            )
+        ],
+    ]
+    notes = [
+        "### Version Space\n- point\nTerms:\n- **Version space**: set of all hypotheses consistent with the training data",
+        "### Limits\n- point\nTerms:\n"
+        "- Backtracking: a search technique that revisits earlier decisions to explore alternatives\n"
+        "- version space: duplicate from a later chunk",
+    ]
+    terms = summarize.collect_terms(chunks, notes, limit=15)
+    # The invented definition (words not on the slides) and the duplicate are dropped.
+    assert terms == [("Version space", "set of all hypotheses consistent with the training data")]
+
+
+def test_terms_are_appended_after_the_summary(monkeypatch):
+    replies = iter(
+        [
+            "### A\n- p\nTerms:\n- Fact 1: the fact from topic 1",  # chunk notes
+            "# T\n## Overview\nx\n## Key Points\n### A\n- p",  # merge
+        ]
+    )
+    monkeypatch.setattr(summarize.llm, "chat", lambda messages, **kw: next(replies))
+    result = summarize.summarize_deck(make_deck(1), mode="short")
+    assert result.endswith("## Important Terms\n- **Fact 1**: the fact from topic 1")

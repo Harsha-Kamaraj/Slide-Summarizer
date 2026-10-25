@@ -5,6 +5,7 @@ CLI:  python -m backend.summarize path/to/deck.pptx [--mode short|detailed] [-o 
 
 import argparse
 import logging
+import re
 import sys
 import threading
 import time
@@ -26,8 +27,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 # How much the final merge should keep, per mode.
 LENGTH_INSTRUCTIONS = {
     "short": (
-        "Keep it short for quick revision: at most 4 topics with 3-4 one-sentence bullets "
-        "each, and at most 8 terms."
+        "Keep it short for quick revision: at most 4 topics with 3-4 one-sentence bullets each."
     ),
     "detailed": (
         "Be thorough: this replaces reading the slides. Cover every distinct idea, definition, "
@@ -41,7 +41,7 @@ LENGTH_INSTRUCTIONS = {
         "inside their numbered step instead of separate bullets. Write each worked example or "
         "practice problem as its own topic (e.g. '### Worked Example: ...') with the problem, "
         "the steps and the final answer. Include limitations and comparisons the notes "
-        "mention. Up to 15 terms."
+        "mention. Keep every topic from the notes: never drop one to save space."
     ),
 }
 
@@ -53,7 +53,10 @@ NOTES_INSTRUCTIONS = {
         "Be complete but explain, don't transcribe: keep every explanation, definition, "
         "formula, algorithm step and worked example (with its steps and final answer), written "
         "as full sentences in your own words. Combine short slide fragments into sentences "
-        "instead of copying them line by line."
+        "instead of copying them line by line. Every slide with teaching content must appear "
+        "in your notes, including quotes and definitions, practice problems with any solution "
+        "the slides give, and open questions the slides raise ('points to ponder'). Copy table "
+        "headers, attribute names and values exactly as the slides write them."
     ),
 }
 
@@ -138,6 +141,7 @@ def summarize_deck(
     report(f"Summarizing part 1/{len(chunks)}…")
     with ThreadPoolExecutor(max_workers=max(1, config.LLM_PARALLEL_CALLS)) as pool:
         notes = list(pool.map(chunk_notes, enumerate(chunks, start=1)))
+    terms = collect_terms(chunks, notes, limit=TERMS_LIMIT[mode])
 
     # Reduce: merge all chunk notes into one structured document.
     logger.info("Merging %d sections into the final summary", len(notes))
@@ -166,15 +170,78 @@ def summarize_deck(
         problem = structure_problem(summary)
         if problem:
             logger.warning("Summary structure still invalid (%s); using it anyway", problem)
+    if terms:
+        lines = [f"- **{term}**: {definition}" for term, definition in terms]
+        summary = summary.rstrip() + "\n\n## Important Terms\n" + "\n".join(lines)
     return summary
 
 
-REQUIRED_SECTIONS = ("## Overview", "## Key Points", "## Important Terms")
+TERMS_LIMIT = {"short": 8, "detailed": 15}
+
+
+def collect_terms(chunks: list[list[Slide]], notes: list[str], limit: int) -> list[tuple[str, str]]:
+    """The Important Terms list, built in code rather than by the merge model.
+
+    Each chunk's notes list the terms its slides define. A term is kept only
+    if its definition is grounded in that chunk's slides (most of its key
+    words appear there): when asked for a terms list, models write textbook
+    definitions for words the slides merely mention. Duplicates across
+    chunks keep their first definition; order follows the lecture.
+    """
+    kept: dict[str, tuple[str, str]] = {}
+    for chunk, chunk_notes in zip(chunks, notes):
+        slide_words = _content_words(" ".join(f"{s.title} {s.text} {s.notes}" for s in chunk))
+        for term, definition in _parse_terms(chunk_notes):
+            key = " ".join(sorted(_content_words(term))) or term.lower()
+            if key in kept or not _grounded(definition, slide_words):
+                continue
+            kept[key] = (term, definition)
+    return list(kept.values())[:limit]
+
+
+def _parse_terms(notes: str) -> list[tuple[str, str]]:
+    """The "- Term: definition" bullets after a chunk's "Terms:" line."""
+    terms = []
+    in_terms = False
+    for line in notes.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("terms:"):
+            in_terms = True
+            continue
+        if in_terms and stripped.startswith(("- ", "* ")):
+            term, sep, definition = stripped[2:].replace("**", "").partition(":")
+            if sep and term.strip() and definition.strip():
+                terms.append((term.strip(), definition.strip()))
+        elif in_terms and stripped.startswith("#"):
+            in_terms = False  # a new topic heading ends the terms list
+    return terms
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+_STOPWORDS = set(
+    "the a an and or of to in on for is are be by with as that this it its from at which "
+    "can each into used use their they them than then these those has have not all any "
+    "set such when where what how".split()
+)
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in _WORD.findall(text.lower()) if w not in _STOPWORDS and len(w) > 2}
+
+
+def _grounded(definition: str, slide_words: set[str]) -> bool:
+    """Most of the definition's key words appear on the slides."""
+    words = _content_words(definition)
+    return bool(words) and len(words & slide_words) / len(words) >= 0.5
+
+
+# The model writes these; "## Important Terms" is appended in code afterwards.
+REQUIRED_SECTIONS = ("## Overview", "## Key Points")
 
 FIX_STRUCTURE_PROMPT = (
     "Your answer did not follow the required structure: {problem}. "
     "Rewrite it as ONE document: a single '# ' title line, then each of "
-    "'## Overview', '## Key Points' and '## Important Terms' exactly once, in that order. "
+    "'## Overview' and '## Key Points' exactly once, in that order, and no other '## ' sections. "
     "Put every topic under '## Key Points' as a '### ' heading. Keep all the content."
 )
 

@@ -7,7 +7,7 @@ Write revision notes for these slides:
 - If speaker notes add an explanation, include it.
 - Skip administrative content: author and instructor names, acknowledgements, quiz links, image sources (e.g. "Source - Google").
 - $detail_instructions
-- After the bullets, add a line "Terms:" followed by bullets of the form "- Term: one-line definition" for every technical term defined in these slides. Write "Terms: none" if there are none.
+- After the bullets, add a line "Terms:" followed by bullets of the form "- Term: definition" for every technical term these slides explicitly define, using the slides' own wording for the definition. Leave out terms the slides only mention without defining. Write "Terms: none" if there are none.
 
 Slides:
 $slides

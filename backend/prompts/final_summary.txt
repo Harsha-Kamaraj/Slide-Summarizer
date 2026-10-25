@@ -17,9 +17,7 @@ Formula: <formula in plain text, on its own line, right after the bullet that in
 1. <step> (use a numbered list for algorithm steps or procedures)
 (repeat for each topic; merge duplicate topics across sections. Order topics as they first appear in the lecture, and put applications or examples of a topic directly after that topic, never collected at the end)
 
-## Important Terms
-- **<Term>**: <one-line definition>
-(each concept once: if the notes use two names for the same idea, pick one; only terms defined in the notes. Key Points should explain ideas, steps and relationships; don't repeat a term's definition word-for-word in both sections)
+(Don't write an Important Terms section: a terms list built from the slides' own definitions is added after your summary. Key Points should explain ideas, steps and relationships.)
 
 Notes:
 $notes
