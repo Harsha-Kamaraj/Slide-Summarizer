@@ -1,0 +1,10 @@
+# Only backend/ goes into the image.
+.git
+.venv
+.cache
+.data
+eval
+tests
+extension
+docs
+**/__pycache__

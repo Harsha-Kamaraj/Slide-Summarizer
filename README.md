@@ -6,7 +6,7 @@ Requires Python 3.11+, [Ollama](https://ollama.com), and LibreOffice (only for l
 
 ```bash
 python3.13 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/pip install -r requirements-dev.txt   # server deps + pytest/black
 ollama pull gemma4:12b        # default model; see backend/config.py
 ```
 

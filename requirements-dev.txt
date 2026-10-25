@@ -1,0 +1,4 @@
+# Everything the server needs, plus test and formatting tools.
+-r backend/requirements.txt
+pytest
+black

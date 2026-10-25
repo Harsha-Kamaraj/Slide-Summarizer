@@ -9,6 +9,3 @@ reportlab
 fastapi
 uvicorn[standard]
 python-multipart
-# Dev
-pytest
-black
