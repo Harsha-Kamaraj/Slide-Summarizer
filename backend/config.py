@@ -27,7 +27,10 @@ MAX_VISION_SLIDES: int = int(os.getenv("MAX_VISION_SLIDES", "20"))
 # some hosted free tiers (e.g. Groq's vision model) only allow ~1000 output
 # tokens per minute, rejecting any request that could exceed it.
 VISION_MAX_TOKENS: int = int(os.getenv("VISION_MAX_TOKENS", "900"))
-LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
+# Per request. A detailed merge on a laptop can write ~3,000+ tokens at ~12
+# tokens/s, so 5 minutes wasn't enough; hosted models finish in seconds, so a
+# generous limit costs nothing there.
+LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "900"))
 # "none" turns off Gemma 4's thinking mode, which roughly doubles latency.
 # Set to "" to omit the field for providers that don't support it.
 LLM_REASONING_EFFORT: str = os.getenv("LLM_REASONING_EFFORT", "none")
