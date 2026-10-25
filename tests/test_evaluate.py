@@ -47,4 +47,18 @@ def test_judge_batches_claims(monkeypatch):
 
     assert len(calls) == 2  # 3 claims, 2 per call
     assert verdicts == ["SUPPORTED"] * 3
-    assert "ignores negatives" in calls[0]  # the judge sees the slides
+    assert "ignores negatives" in calls[0]  # the judge sees the relevant slide
+
+
+def test_judge_sees_only_slides_relevant_to_the_claims(monkeypatch):
+    monkeypatch.setattr(evaluate, "SLIDES_PER_CLAIM", 1)
+    deck = Deck(
+        title="T",
+        slides=[
+            Slide(number=1, title="Find-S", text="Find-S ignores negative examples"),
+            Slide(number=2, title="Version Space", text="hypotheses consistent with training data"),
+            Slide(number=3, title="Decision Trees", text="split on information gain"),
+        ],
+    )
+    picked = evaluate.relevant_slides(deck, ["The version space holds consistent hypotheses."])
+    assert [s.number for s in picked] == [2]

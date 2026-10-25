@@ -20,7 +20,7 @@ from pathlib import Path
 from string import Template
 
 from backend import config, llm
-from backend.extract import Deck, extract_deck
+from backend.extract import Deck, Slide, extract_deck
 from backend.pdf_builder import parse_summary
 from backend.summarize import format_slides, summarize_deck
 from backend.vision import describe_image_slides
@@ -30,9 +30,13 @@ SUMMARIES_DIR = Path("eval/summaries")
 RESULTS_FILE = Path("eval/results.md")
 JUDGE_PROMPT = Template((Path(__file__).parent / "prompts" / "judge_claims.txt").read_text())
 
-# Claims per judge call: few enough that the model checks each one carefully,
-# many enough to keep the number of calls (and minutes) down.
-CLAIMS_PER_CALL = 15
+# Claims per judge call, and slides shown per claim. The judge sees only the
+# slides most likely to support each claim (by shared words), not the whole
+# deck: a 58-slide deck plus image descriptions is ~7k tokens, more than a free
+# hosted tier allows per minute. Trade-off: if the right slide isn't among the
+# top few, a true claim is marked unsupported, so scores err on the strict side.
+CLAIMS_PER_CALL = 5
+SLIDES_PER_CLAIM = 3
 VERDICT_LINE = re.compile(r"^\s*(\d+)\s*\|\s*(SUPPORTED|PARTIAL|UNSUPPORTED)\s*\|\s*(.*)$", re.I)
 
 
@@ -49,11 +53,11 @@ def extract_claims(markdown: str) -> list[str]:
 def judge_claims(deck: Deck, claims: list[str]) -> list[str]:
     """Return one verdict per claim: SUPPORTED, PARTIAL, UNSUPPORTED or UNKNOWN
     (the judge's reply for that claim couldn't be parsed)."""
-    slides = format_slides(deck.slides)
     verdicts: list[str] = []
     for start in range(0, len(claims), CLAIMS_PER_CALL):
         batch = claims[start : start + CLAIMS_PER_CALL]
         numbered = "\n".join(f"{i}. {claim}" for i, claim in enumerate(batch, start=1))
+        slides = format_slides(relevant_slides(deck, batch))
         reply = llm.chat(
             [{"role": "user", "content": JUDGE_PROMPT.substitute(slides=slides, claims=numbered)}],
             model=config.JUDGE_MODEL,
@@ -61,6 +65,31 @@ def judge_claims(deck: Deck, claims: list[str]) -> list[str]:
         )
         verdicts += parse_verdicts(reply, len(batch))
     return verdicts
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+# Words too common to say which slide a claim came from.
+_STOPWORDS = set(
+    "the a an and or of to in on for is are be by with as that this it its from at which "
+    "can each into using used use their they them than then these those has have not".split()
+)
+
+
+def relevant_slides(deck: Deck, claims: list[str]) -> list[Slide]:
+    """The slides sharing the most words with each claim, in deck order."""
+
+    def words(text: str) -> set[str]:
+        return {w for w in _WORD.findall(text.lower()) if w not in _STOPWORDS}
+
+    slide_words = [
+        (slide, words(f"{slide.title} {slide.text} {slide.notes}")) for slide in deck.slides
+    ]
+    chosen: set[int] = set()
+    for claim in claims:
+        claim_words = words(claim)
+        ranked = sorted(slide_words, key=lambda sw: len(claim_words & sw[1]), reverse=True)
+        chosen.update(slide.number for slide, _ in ranked[:SLIDES_PER_CLAIM])
+    return [slide for slide in deck.slides if slide.number in chosen]
 
 
 def parse_verdicts(reply: str, count: int) -> list[str]:
@@ -127,8 +156,10 @@ def main() -> None:
 
     columns = list(rows[0])
     table = [
-        f"\n## {date.today()} · mode={args.mode} · summarizer={config.TEXT_MODEL} · "
-        f"judge={config.JUDGE_MODEL} · vision={'on' if config.VISION_ENABLED else 'off'}\n",
+        f"\n## {date.today()} · mode={args.mode} · {config.LLM_BASE_URL}\n",
+        f"notes={config.NOTES_MODEL} · merge={config.TEXT_MODEL} · "
+        f"vision={config.VISION_MODEL if config.VISION_ENABLED else 'off'} · "
+        f"judge={config.JUDGE_MODEL}\n",
         "| " + " | ".join(columns) + " |",
         "|" + "---|" * len(columns),
         *("| " + " | ".join(str(row[c]) for c in columns) + " |" for row in rows),
