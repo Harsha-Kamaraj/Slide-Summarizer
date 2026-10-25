@@ -37,3 +37,12 @@ Prompts live in `backend/prompts/*.txt`, not in Python strings, so they can be r
 
 ## 10. The summary is Markdown with fixed headings
 The final output uses fixed Markdown headings (`## Overview`, `## Key Points`, `## Important Terms`). Markdown is readable as-is in the terminal (Stage 1), small models produce it reliably, and the PDF builder (Stage 2) can turn it into sections by splitting on those known headings. JSON output was the alternative, but it is unreadable in the terminal, and small models sometimes break the syntax. Constrained decoding would fix that, but it ties us to providers that support it.
+
+## 11. Strip text that repeats on half the PDF pages
+The college's PDF exports put the course name ("Machine Learning") on every page. In some decks it appears *above* the real heading, so it was taken as every slide's title. Any line that appears on at least half the pages (for decks of 4+ pages) is treated as a running header or footer and removed before the slide title is chosen. This works for any course without hardcoding course names. Bullet glyphs (`•`, `●`, `■`) that PowerPoint exports as text are also turned into `- `, except `-` itself, which could be a minus sign.
+
+## 12. The model names the summary; the extractor doesn't try
+Slide 1 of these decks is a course/credits slide and the PDF metadata title is "Slide 1", so the extractor can't find the lecture's topic. Instead of guessing, the final prompt asks the model to write a short topic title from the notes, with the deck's label given only as context. When the extension is built, the deck name shown on the site (e.g. "ML models") can be passed in too.
+
+## 13. Check the summary's structure in code, and give the model one retry
+On a real 35-slide deck the model sometimes repeated the template mid-document (a second `## Overview`), which would break the PDF builder. Clearer prompt wording reduces this but can't guarantee it, so `structure_problem()` checks that there's one `# ` title and exactly the three `## ` sections in order. If the check fails, the model gets one follow-up message naming the exact problem and asking it to fix the output. Rules in the prompt make good output likely; a check in code catches the times it goes wrong anyway. Only one retry, to keep the time cost predictable.

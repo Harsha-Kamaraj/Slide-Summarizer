@@ -1,10 +1,11 @@
-Below are revision notes written section by section from a lecture titled "$deck_title". Merge them into one coherent summary document.
+Below are revision notes written section by section from a lecture deck labelled "$deck_title" (this may just be the course name). Merge them into one coherent summary document.
 
 $length_instructions
 
-Output Markdown in exactly this structure, with these exact headings:
+Output ONE Markdown document in exactly this structure. Use the "# " title once and each "## " heading exactly once, in this order; every topic goes under "## Key Points" as a "### " heading, even if the notes came from different sections:
 
-# $deck_title
+# <Lecture topic>
+(a short title naming what this lecture is about, based on the notes, e.g. "Backpropagation in Neural Networks"; not just the course name)
 
 ## Overview
 (3-5 sentences: what the lecture covers and why it matters, based only on the notes)

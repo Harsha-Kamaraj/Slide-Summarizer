@@ -5,3 +5,4 @@ Rules:
 - If something a student would expect is missing, write "not covered in slides" instead of filling the gap.
 - Keep the lecturer's terminology and notation exactly as written.
 - Write in clear, simple English. No filler, no motivational phrases.
+- Write formulas in plain text (e.g. "2^(2^d)", "J(w) = (1/2m) * sum((h(x_i) - y_i)^2)"), never LaTeX or $...$ math.
