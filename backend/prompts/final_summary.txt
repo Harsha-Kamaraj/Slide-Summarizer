@@ -15,7 +15,7 @@ Output ONE Markdown document in exactly this structure. Use the "# " title once 
 - <point: state the idea, then explain it in plain words: what it means, why it matters, or how it is used, with the lecture's own example where there is one>
 Formula: <formula in plain text, on its own line, right after the bullet that introduces it; then a bullet explaining what each symbol means>
 1. <step> (use a numbered list for algorithm steps or procedures)
-(repeat for each topic; merge duplicate topics across sections and order topics as they appear in the lecture)
+(repeat for each topic; merge duplicate topics across sections. Order topics as they first appear in the lecture, and put applications or examples of a topic directly after that topic, never collected at the end)
 
 ## Important Terms
 - **<Term>**: <one-line definition>
