@@ -6,7 +6,6 @@ Usage (from the repo root):
 Needs these env vars, read here and never printed or written to disk:
     HF_TOKEN        a Hugging Face access token with write permission
     GROQ_API_KEY    the main LLM provider key, stored in the Space as a *secret*
-    GOOGLE_API_KEY  optional: enables the Google AI Studio (Gemma) fallback
 
 What it does: creates the Space if needed (Docker SDK, public, so the
 extension can call it), sets the model settings as Space variables and the API
@@ -35,13 +34,15 @@ VARIABLES = {
     "DAILY_LIMIT": "10",
 }
 
-# Fallback when Groq is rate-limited or down: Gemma on Google AI Studio's free
-# tier (decision #30). gemma-4-31b-it returned 500/503 when tested, so the
-# smaller mixture-of-experts model, which reads images too.
+# Fallback when the main model is rate-limited or out of daily quota (the
+# common failure): gpt-oss-20b on Groq has its own per-model quota and was
+# tested as a working fallback (decision #30). Google AI Studio's Gemma was
+# tried first but was unreliable (500/503, timeouts); see docs/DEPLOY.md.
 FALLBACK_VARIABLES = {
-    "FALLBACK_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai/",
-    "FALLBACK_MODEL": "gemma-4-26b-a4b-it",
-    "FALLBACK_VISION_MODEL": "gemma-4-26b-a4b-it",
+    "FALLBACK_BASE_URL": "https://api.groq.com/openai/v1",
+    "FALLBACK_MODEL": "openai/gpt-oss-20b",
+    "FALLBACK_VISION_MODEL": "qwen/qwen3.8-27b",
+    "FALLBACK_REASONING_EFFORT": "low",
 }
 
 # Hugging Face reads this block to know the Space is a Docker app on port 7860.
@@ -73,11 +74,8 @@ def main() -> None:
     print(f"Space ready: https://huggingface.co/spaces/{repo_id}")
 
     api.add_space_secret(repo_id, "LLM_API_KEY", llm_key)
-    variables = dict(VARIABLES)
-    if fallback_key := os.environ.get("GOOGLE_API_KEY"):
-        api.add_space_secret(repo_id, "FALLBACK_API_KEY", fallback_key)
-        variables |= FALLBACK_VARIABLES
-        print("Fallback provider (Google AI Studio) enabled")
+    api.add_space_secret(repo_id, "FALLBACK_API_KEY", llm_key)  # same provider
+    variables = VARIABLES | FALLBACK_VARIABLES
     for name, value in variables.items():
         api.add_space_variable(repo_id, name, value)
     print(f"Set the API key secret(s) and {len(variables)} variables")

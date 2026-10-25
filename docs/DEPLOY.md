@@ -29,7 +29,10 @@ Create a key in the provider's console and pick model names from its model list:
 | `VISION_MODEL` | `qwen/qwen3.8-27b` (the only Groq model that reads images; ~1000 output tokens/min on the free tier) |
 | `LLM_REASONING_EFFORT` | `low` (gpt-oss rejects `none`) |
 | `LLM_MAX_RETRIES` | `6` (rides out per-minute limits) |
-| `FALLBACK_*` | strongly recommended: the free tier allows ~200k tokens/day per model, roughly 8–10 new detailed summaries a day before the fallback (or the cache) has to cover the rest |
+| `FALLBACK_BASE_URL`, `FALLBACK_MODEL` | `https://api.groq.com/openai/v1`, `openai/gpt-oss-20b`: its own ~200k tokens/day, used when the main model's daily quota runs out (the deploy script sets this up) |
+| `FALLBACK_VISION_MODEL` | `qwen/qwen3.8-27b` |
+
+To protect against a full Groq outage instead, point the fallback at another provider, e.g. Google AI Studio: `FALLBACK_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `FALLBACK_MODEL=gemma-4-26b-a4b-it`. In testing (October 2026) it was slow, ~10 tokens/s plus visible "thinking" (which the backend strips), and often returned 500/503.
 
 **Never put keys in the code or the extension.** They go in the host's secret settings only.
 
