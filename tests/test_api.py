@@ -79,7 +79,8 @@ def test_corrupt_file_gives_clear_error(tmp_path, fake_summarizer):
     path.write_bytes(b"not a pptx")
     response = upload(path)
     assert response.status_code == 422
-    assert "may be corrupt" in response.json()["detail"]
+    # Names the student's file, not the server's temp file.
+    assert response.json()["detail"] == "Could not open 'broken.pptx': it may be corrupt."
 
 
 def test_llm_down_gives_503_with_reason(sample_pdf, monkeypatch):

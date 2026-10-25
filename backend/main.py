@@ -64,12 +64,15 @@ def summarize(
         raise HTTPException(415, f"Unsupported file type '{suffix}'. Allowed: {allowed}")
 
     start = time.perf_counter()
-    # The upload only lives in a temp file for the length of this request
-    # (privacy: we never keep students' files).
-    with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
-        _save_upload(file, tmp)
+    # The upload only lives in a temp folder for the length of this request
+    # (privacy: we never keep students' files). It keeps its original name so
+    # error messages and fallback deck titles show "Lecture3.pptx", not "tmpab12".
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        saved = Path(tmp_dir) / filename
+        with saved.open("wb") as destination:
+            _save_upload(file, destination)
         try:
-            deck = extract_deck(tmp.name)
+            deck = extract_deck(saved)
             markdown = summarize_deck(deck, mode=mode)
         except ExtractionError as exc:
             raise HTTPException(422, str(exc)) from exc
@@ -103,4 +106,3 @@ def _save_upload(upload: UploadFile, destination) -> None:
         destination.write(piece)
     if size == 0:
         raise HTTPException(400, "The uploaded file is empty.")
-    destination.flush()
