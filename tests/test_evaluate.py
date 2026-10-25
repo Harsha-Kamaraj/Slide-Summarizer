@@ -80,3 +80,20 @@ def test_honest_placeholders_are_not_scored():
         "- Find-S ignores negative examples.\n- Solution not given in slides.",
     )
     assert not any("not given" in c for c in evaluate.extract_claims(summary))
+
+
+def test_coverage_verdicts_per_slide(monkeypatch):
+    seen = []
+
+    def fake_chat(messages, **kwargs):
+        seen.append(messages[0]["content"])
+        return "1 | ADMIN\n2 | COVERED\n3 | missing\nnoise"
+
+    monkeypatch.setattr(evaluate.llm, "chat", fake_chat)
+    deck = Deck(
+        title="T",
+        slides=[Slide(number=n, title=f"S{n}", text="x") for n in (1, 2, 3, 4)],
+    )
+    verdicts = evaluate.judge_coverage(deck, "# Summary text")
+    assert verdicts == {1: "ADMIN", 2: "COVERED", 3: "MISSING", 4: "UNKNOWN"}
+    assert "# Summary text" in seen[0]  # the judge sees the summary

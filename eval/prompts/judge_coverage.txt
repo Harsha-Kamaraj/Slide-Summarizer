@@ -1,0 +1,16 @@
+You are checking whether a lecture summary covers the lecture. Below is the summary, then some of the lecture's slides.
+
+For each slide, decide whether its main teaching point appears in the summary:
+- COVERED: the summary includes the slide's main point (wording may differ).
+- PARTIAL: the summary mentions the topic but leaves out the slide's key content (e.g. its definition, formula, steps or answer).
+- MISSING: the summary doesn't include this slide's point at all.
+- ADMIN: the slide has no teaching content (title page, credits, contact details, quiz links, "thank you").
+
+Answer with exactly one line per slide, in this format and nothing else:
+<slide number> | <COVERED or PARTIAL or MISSING or ADMIN>
+
+Summary:
+$summary
+
+Slides:
+$slides

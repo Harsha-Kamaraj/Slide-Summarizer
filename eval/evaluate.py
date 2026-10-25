@@ -29,6 +29,10 @@ DECKS_DIR = Path("eval/sample_decks")
 SUMMARIES_DIR = Path("eval/summaries")
 RESULTS_FILE = Path("eval/results.md")
 JUDGE_PROMPT = Template((Path(__file__).parent / "prompts" / "judge_claims.txt").read_text())
+COVERAGE_PROMPT = Template((Path(__file__).parent / "prompts" / "judge_coverage.txt").read_text())
+# Slides per coverage call: each call also carries the whole summary.
+SLIDES_PER_COVERAGE_CALL = 6
+COVERAGE_LINE = re.compile(r"^\s*(\d+)\s*\|\s*(COVERED|PARTIAL|MISSING|ADMIN)\b", re.I)
 
 # Claims per judge call, and slides shown per claim. The judge sees only the
 # slides most likely to support each claim (by shared words), not the whole
@@ -103,6 +107,35 @@ def relevant_slides(deck: Deck, claims: list[str]) -> list[Slide]:
     return [slide for slide in deck.slides if slide.number in chosen]
 
 
+def judge_coverage(deck: Deck, summary: str) -> dict[int, str]:
+    """Faithfulness asks "is what's written true?"; this asks the other half,
+    "is everything important included?". Returns {slide number: verdict}."""
+    verdicts: dict[int, str] = {}
+    slides = deck.slides
+    for start in range(0, len(slides), SLIDES_PER_COVERAGE_CALL):
+        batch = slides[start : start + SLIDES_PER_COVERAGE_CALL]
+        reply = llm.chat(
+            [
+                {
+                    "role": "user",
+                    "content": COVERAGE_PROMPT.substitute(
+                        summary=summary, slides=format_slides(batch)
+                    ),
+                }
+            ],
+            model=config.JUDGE_MODEL,
+            temperature=0,
+        )
+        found = {
+            int(m.group(1)): m.group(2).upper()
+            for m in map(COVERAGE_LINE.match, reply.splitlines())
+            if m
+        }
+        for slide in batch:
+            verdicts[slide.number] = found.get(slide.number, "UNKNOWN")
+    return verdicts
+
+
 def parse_verdicts(reply: str, count: int) -> list[str]:
     found: dict[int, str] = {}
     for line in reply.splitlines():
@@ -126,10 +159,14 @@ def evaluate_deck(path: Path, mode: str) -> dict:
     claims = extract_claims(markdown)
     verdicts = judge_claims(deck, claims)
     counts = {v: verdicts.count(v) for v in ("SUPPORTED", "PARTIAL", "UNSUPPORTED", "UNKNOWN")}
+    coverage = judge_coverage(deck, markdown)
+    teaching = [n for n, v in coverage.items() if v in ("COVERED", "PARTIAL", "MISSING")]
+    missing = [n for n in teaching if coverage[n] == "MISSING"]
 
     SUMMARIES_DIR.mkdir(parents=True, exist_ok=True)
     (SUMMARIES_DIR / f"eval_{path.stem}_{mode}.md").write_text(markdown)
     flagged = [f"- [{v}] {c}" for c, v in zip(claims, verdicts) if v != "SUPPORTED"]
+    flagged += [f"- [{coverage[n]} slide] {n}" for n in teaching if coverage[n] != "COVERED"]
     (SUMMARIES_DIR / f"eval_{path.stem}_{mode}_flagged.md").write_text("\n".join(flagged) + "\n")
 
     judged = len(claims) - counts["UNKNOWN"]
@@ -144,6 +181,11 @@ def evaluate_deck(path: Path, mode: str) -> dict:
         "partial_%": _percent(counts["PARTIAL"], judged),
         "unsupported_%": _percent(counts["UNSUPPORTED"], judged),
         "unparsed": counts["UNKNOWN"],
+        "covered_%": _percent(sum(coverage[n] == "COVERED" for n in teaching), len(teaching)),
+        "partly_covered_%": _percent(
+            sum(coverage[n] == "PARTIAL" for n in teaching), len(teaching)
+        ),
+        "missing_slides": ",".join(map(str, missing)) or "-",
     }
 
 
