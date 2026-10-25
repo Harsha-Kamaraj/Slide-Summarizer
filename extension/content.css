@@ -1,0 +1,21 @@
+/* Summarize button injected next to each PESU slide link. Prefixed class
+   names so PESU's own styles don't clash with ours. */
+.slide-summarizer-btn {
+  margin-left: 12px;
+  padding: 3px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #1f4e79;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.slide-summarizer-btn:hover:not(:disabled) {
+  background: #2a6aa5;
+}
+.slide-summarizer-btn:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}

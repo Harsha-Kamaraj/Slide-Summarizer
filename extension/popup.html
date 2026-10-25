@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Slide Summarizer</title>
+    <style>
+      body {
+        width: 300px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.4 -apple-system, "Segoe UI", sans-serif;
+        color: #222;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        color: #1f4e79;
+      }
+      section {
+        margin-bottom: 14px;
+      }
+      label.option {
+        display: block;
+        margin: 3px 0;
+      }
+      .status {
+        padding: 6px 8px;
+        border-radius: 4px;
+        background: #f1f3f5;
+      }
+      .status.ok {
+        background: #e6f4ea;
+        color: #1e6b34;
+      }
+      .status.bad {
+        background: #fdecea;
+        color: #a52714;
+      }
+      button {
+        width: 100%;
+        padding: 7px;
+        font-weight: 600;
+        color: #fff;
+        background: #1f4e79;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      input[type="url"] {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      small {
+        color: #666;
+      }
+      details {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>📝 Slide Summarizer</h1>
+
+    <section>
+      <div id="status" class="status">Checking backend…</div>
+    </section>
+
+    <section>
+      <strong>Summary length</strong>
+      <label class="option"><input type="radio" name="mode" value="detailed" /> Detailed (explained, with formulas)</label>
+      <label class="option"><input type="radio" name="mode" value="short" /> Short (quick revision)</label>
+    </section>
+
+    <section>
+      <strong>Summarize a file</strong>
+      <p><small>On PESU Academy, use the 📝 Summarize buttons next to each slide deck. Or pick a .pptx, .ppt or .pdf here:</small></p>
+      <input id="file" type="file" accept=".pptx,.ppt,.pdf" />
+      <p><button id="summarize" disabled>Summarize file</button></p>
+      <div id="message"></div>
+    </section>
+
+    <details>
+      <summary>Settings</summary>
+      <p>
+        <label>Backend URL<br /><input id="backendUrl" type="url" /></label>
+      </p>
+    </details>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
