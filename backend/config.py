@@ -14,6 +14,9 @@ TEXT_MODEL: str = os.getenv("TEXT_MODEL", "gemma4:12b")
 # Model for the map step (chunk notes). Defaults to TEXT_MODEL; can be set to a
 # smaller/faster model, since extracting notes is easier than the final merge.
 NOTES_MODEL: str = os.getenv("NOTES_MODEL", TEXT_MODEL)
+# Model that checks summaries against the slides in eval/evaluate.py. Ideally
+# a different (stronger) model than the summarizer, to avoid grading its own work.
+JUDGE_MODEL: str = os.getenv("JUDGE_MODEL", TEXT_MODEL)
 VISION_MODEL: str = os.getenv("VISION_MODEL", "gemma4:12b")  # must support image input
 # Describe image-heavy slides with the vision model (Stage 5). Set to 0 to skip
 # it, e.g. with a hosted text-only model or to save time.

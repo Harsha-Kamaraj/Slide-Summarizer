@@ -1,0 +1,17 @@
+You are checking a lecture summary for accuracy. Below are the lecture's slides, then numbered claims taken from the summary.
+
+For each claim, decide whether the slides support it:
+- SUPPORTED: the slides state this (wording may differ).
+- PARTIAL: part of the claim is in the slides, but it adds or changes a detail (e.g. a reason, number or name the slides don't give).
+- UNSUPPORTED: the slides don't say this, or say something different.
+
+Judge only against the slides, not your own knowledge: a claim that is true in general but absent from the slides is UNSUPPORTED.
+
+Answer with exactly one line per claim, in this format and nothing else:
+<claim number> | <SUPPORTED or PARTIAL or UNSUPPORTED> | <slide number that supports it, or - >
+
+Slides:
+$slides
+
+Claims:
+$claims
