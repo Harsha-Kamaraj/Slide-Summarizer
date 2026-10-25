@@ -28,3 +28,17 @@ IMAGE_HEAVY_WORD_THRESHOLD: int = int(os.getenv("IMAGE_HEAVY_WORD_THRESHOLD", "1
 MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "50"))
 MAX_SLIDES: int = int(os.getenv("MAX_SLIDES", "150"))
 ALLOWED_EXTENSIONS: tuple[str, ...] = (".pptx", ".ppt", ".pdf")
+
+# --- PDF output ---
+# Folders searched for DejaVu Sans, a free font that covers Greek letters and
+# math symbols (reportlab's built-in Helvetica can't draw e.g. "χ").
+# LibreOffice bundles it on macOS; on Debian/Docker it's the fonts-dejavu package.
+FONT_DIRS: list[str] = [
+    d
+    for d in [
+        os.getenv("FONT_DIR", ""),
+        "/Applications/LibreOffice.app/Contents/Resources/fonts/truetype",
+        "/usr/share/fonts/truetype/dejavu",
+    ]
+    if d
+]
