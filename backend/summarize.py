@@ -21,14 +21,15 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 # How much the final merge should keep, per mode.
 LENGTH_INSTRUCTIONS = {
     "short": (
-        "Keep it short for quick revision: at most 4 topics, each with a one-sentence "
-        "explanation and 3-4 bullets, and at most 8 terms."
+        "Keep it short for quick revision: at most 4 topics with 3-4 one-sentence bullets "
+        "each, and at most 8 terms."
     ),
     "detailed": (
-        "Be thorough: this replaces reading the slides. Give every topic a 3-5 sentence "
-        "explanation paragraph, then bullets covering every distinct idea, definition, formula "
-        "and algorithm step in the notes. Write each worked example or practice problem as its "
-        "own topic (e.g. '### Worked Example: ...') with the problem, the steps and the final "
+        "Be thorough: this replaces reading the slides. Cover every distinct idea, definition, "
+        "formula and algorithm step in the notes. Each bullet is 1-3 full sentences that "
+        "explain the point, not just name it: what it means, why it matters, and the lecture's "
+        "example if there is one. Write each worked example or practice problem as its own "
+        "topic (e.g. '### Worked Example: ...') with the problem, the steps and the final "
         "answer. Include limitations and comparisons the notes mention. Up to 15 terms."
     ),
 }

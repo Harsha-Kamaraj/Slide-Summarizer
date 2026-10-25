@@ -83,3 +83,30 @@ def test_topic_explanation_and_numbered_steps():
         text = doc[0].get_text()
     assert "It ignores negatives." in text
     assert "1." in text and "Initialise h" in text
+
+
+def test_formula_lines_are_parsed_and_boxed():
+    s = parse_summary(
+        "# T\n## Key Points\n### Concept Space\n- The number of concepts grows fast.\n"
+        "Formula: N = 2^(2^d)\n- `Formula: J(w) = sum(x_i)`\n"
+    )
+    assert s.topics[0].points == [
+        "The number of concepts grows fast.",
+        "Formula: N = 2^(2^d)",
+        "Formula: J(w) = sum(x_i)",
+    ]
+    pdf = build_pdf(s)
+    with pymupdf.open(stream=pdf, filetype="pdf") as doc:
+        page = doc[0]
+        text = page.get_text()
+        has_box = any(d.get("fill") for d in page.get_drawings())
+    assert "N = 2" in text and "sum(x" in text
+    assert has_box  # the shaded background was drawn
+
+
+def test_formula_markup_superscripts_and_subscripts():
+    from backend.pdf_builder import _formula_markup
+
+    assert _formula_markup("2^(2^d)") == "2<super>2<super>d</super></super>"
+    assert _formula_markup("h(x_i) - y_i") == "h(x<sub>i</sub>) - y<sub>i</sub>"
+    assert _formula_markup("a < b") == "a &lt; b"

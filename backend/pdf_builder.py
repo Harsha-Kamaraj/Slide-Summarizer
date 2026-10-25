@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 class Topic:
     heading: str
     explanation: str = ""  # optional paragraph before the points
-    # Bullets are stored without their marker; numbered steps keep "1. ".
+    # Bullets are stored without their marker; numbered steps keep "1. " and
+    # formulas keep "Formula: ", so render time knows how to draw each one.
     points: list[str] = field(default_factory=list)
 
 
@@ -75,8 +76,13 @@ def parse_summary(markdown: str) -> Summary:
             if not summary.topics:  # content before any ### heading
                 summary.topics.append(Topic(heading="Key points"))
             topic = summary.topics[-1]
-            if _is_bullet(line):
-                topic.points.append(_bullet_text(line))
+            text = _bullet_text(line) if _is_bullet(line) else line
+            # Models sometimes wrap formulas in backticks; the box is enough.
+            unticked = text.strip("`").strip()
+            if unticked.lower().startswith("formula:"):
+                topic.points.append("Formula: " + unticked[8:].strip().strip("`"))
+            elif _is_bullet(line):
+                topic.points.append(text)
             elif _NUMBERED.match(line):
                 topic.points.append(line)
             else:  # a plain line is part of the topic's explanation paragraph
@@ -142,7 +148,7 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
             head = [Paragraph(_inline(topic.heading), styles["h3"])]
             if topic.explanation:
                 head.append(Paragraph(_inline(topic.explanation), styles["explanation"]))
-            points = [_point(p, styles["point"]) for p in topic.points]
+            points = [_point(p, styles) for p in topic.points]
             # Keep a topic heading on the same page as its explanation and
             # first point, so a heading never sits alone at a page bottom.
             story.append(KeepTogether(head + points[:1]))
@@ -189,14 +195,48 @@ def _inline(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
 
 
-def _point(text: str, style: ParagraphStyle) -> Paragraph:
-    """A bullet ("•") or numbered step ("1.") as an indented paragraph."""
+def _point(text: str, styles: dict[str, ParagraphStyle]):
+    """A bullet ("•"), numbered step ("1.") or boxed formula."""
+    if text.startswith("Formula: "):
+        return _formula_box(text[len("Formula: ") :], styles["formula"])
     numbered = _NUMBERED.match(text)
     if numbered:
         return Paragraph(
-            _bold_label(_inline(numbered.group(2))), style, bulletText=f"{numbered.group(1)}."
+            _bold_label(_inline(numbered.group(2))),
+            styles["point"],
+            bulletText=f"{numbered.group(1)}.",
         )
-    return Paragraph(_bold_label(_inline(text)), style, bulletText="•")
+    return Paragraph(_bold_label(_inline(text)), styles["point"], bulletText="•")
+
+
+def _formula_box(formula: str, style: ParagraphStyle) -> Table:
+    """Draw a formula centred in a shaded, bordered box so it stands out."""
+    box = Table([[Paragraph(_formula_markup(formula), style)]], colWidths=[150 * mm])
+    box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef4fb")),
+                ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#1f4e79")),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    box.spaceBefore, box.spaceAfter = 3, 5
+    return box
+
+
+def _formula_markup(formula: str) -> str:
+    """Turn plain-text math into reportlab markup: "2^(2^d)" -> 2 with a
+    superscript, "x_i" -> x with a subscript. Innermost brackets first, so
+    nested powers like 2^(2^d) come out nested."""
+    text = html.escape(formula, quote=False)
+    for marker, tag in (("^", "super"), ("_", "sub")):
+        bracketed = re.compile(re.escape(marker) + r"\(([^()]*)\)")
+        while bracketed.search(text):
+            text = bracketed.sub(rf"<{tag}>\1</{tag}>", text)
+        text = re.sub(re.escape(marker) + r"([A-Za-z0-9]+)", rf"<{tag}>\1</{tag}>", text)
+    return text
 
 
 def _bold_label(text: str) -> str:
@@ -269,6 +309,14 @@ def _styles(regular: str, bold: str) -> dict[str, ParagraphStyle]:
             leftIndent=7 * mm,
             bulletIndent=1.5 * mm,
             spaceAfter=2,
+        ),
+        "formula": ParagraphStyle(
+            "formula",
+            parent=base["Normal"],
+            fontName=regular,
+            fontSize=11.5,
+            leading=17,
+            alignment=TA_CENTER,
         ),
         "term": ParagraphStyle(
             "term", parent=base["Normal"], fontName=bold, fontSize=10, leading=14

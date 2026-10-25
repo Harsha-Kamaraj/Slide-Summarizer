@@ -12,8 +12,8 @@ Output ONE Markdown document in exactly this structure. Use the "# " title once 
 
 ## Key Points
 ### <Topic name>
-<A plain paragraph (no bullet) explaining the topic in simple words: what it is, why it matters, and how it connects to the previous topic. Use only information from the notes.>
-- <point>
+- <point: state the idea, then explain it in plain words: what it means, why it matters, or how it is used, with the lecture's own example where there is one>
+Formula: <formula in plain text, on its own line, right after the bullet that introduces it; then a bullet explaining what each symbol means>
 1. <step> (use a numbered list for algorithm steps or procedures)
 (repeat for each topic; merge duplicate topics across sections and order topics as they appear in the lecture)
 
