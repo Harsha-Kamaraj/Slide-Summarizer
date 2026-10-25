@@ -182,7 +182,7 @@ def _extract_pdf(path: Path) -> Deck:
         raise ExtractionError(f"Could not open '{path.name}': it may be corrupt.") from exc
 
     with doc:
-        pages = [_clean_lines(page.get_text()) for page in doc]
+        pages = [_page_lines(page) for page in doc]
         meta_title = (doc.metadata or {}).get("title", "")
 
     boilerplate = _repeated_lines(pages)
@@ -196,6 +196,43 @@ def _extract_pdf(path: Path) -> Deck:
         slides.append(Slide(number=number, title=title, text=text))
 
     return Deck(title=_pick_title(meta_title, slides, path.stem), slides=slides)
+
+
+def _page_lines(page: pymupdf.Page) -> list[str]:
+    """Page text with tables kept as rows.
+
+    Plain text extraction reads a table one cell per line ("sky", "temp", ...,
+    "sunny", "warm", ...), so the model has to count positions to know which
+    column a value is in, and it miscounts. Detected tables are instead
+    written as "a | b | c" rows, like .pptx tables.
+    """
+    tables = page.find_tables().tables
+    table_rects = [pymupdf.Rect(t.bbox) for t in tables]
+
+    # Text blocks outside the tables, in reading order.
+    outside = []
+    for x0, y0, x1, y1, text, _, block_type in page.get_text("blocks"):
+        centre = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
+        if block_type == 0 and not any(centre in rect for rect in table_rects):
+            outside.append(text)
+    lines = _clean_lines("\n".join(outside))
+
+    for table in tables:
+        # Read each cell by its position: the table's own text extraction
+        # scrambles letter-spaced text ("s y" for "sky") in some exports.
+        rows = [
+            [
+                " ".join(page.get_textbox(pymupdf.Rect(cell)).split()) if cell else ""
+                for cell in row.cells
+            ]
+            for row in table.rows
+        ]
+        rows = [row for row in rows if any(row)]
+        # Double borders between cells can be detected as extra, always-empty
+        # columns; drop those.
+        keep = [c for c in range(len(rows[0]) if rows else 0) if any(row[c] for row in rows)]
+        lines += [" | ".join(row[c] for c in keep) for row in rows]
+    return lines
 
 
 # Bullet glyphs PowerPoint exports as text, sometimes on a line of their own.

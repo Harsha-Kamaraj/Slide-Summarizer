@@ -108,3 +108,27 @@ def test_pdf_strips_repeated_headers_and_bullet_glyphs(tmp_path):
     assert "Machine Learning" not in slides[0].text
     assert "- point about Concept" in slides[0].text
     assert "-0.5 is a weight for Concept" in slides[0].text  # minus sign untouched
+
+
+def test_pdf_tables_become_rows(tmp_path):
+    # A ruled table like the EnjoySport training data on the college slides.
+    import pymupdf
+
+    rows = [["sky", "water", "enjoy"], ["sunny", "warm", "yes"], ["sunny", "cool", "yes"]]
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 60), "Find S Algorithm - Example", fontsize=18)
+    x0, y0, w, h = 72, 100, 120, 30
+    for r, row in enumerate(rows):
+        for c, value in enumerate(row):
+            rect = pymupdf.Rect(x0 + c * w, y0 + r * h, x0 + (c + 1) * w, y0 + (r + 1) * h)
+            page.draw_rect(rect, color=(0, 0, 0), width=1)
+            page.insert_text((rect.x0 + 5, rect.y0 + 20), value, fontsize=11)
+    path = tmp_path / "table.pdf"
+    doc.save(path)
+
+    slide = extract_deck(path).slides[0]
+    assert slide.title == "Find S Algorithm - Example"
+    assert "sky | water | enjoy" in slide.text
+    assert "sunny | cool | yes" in slide.text
+    assert "\nsky\n" not in f"\n{slide.text}\n"  # no one-cell-per-line leftovers
