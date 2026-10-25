@@ -94,3 +94,13 @@ Found with DevTools: each deck on the Slides tab is `<a onclick="loadIframe('/Ac
 - **Downloads:** service workers have no `URL.createObjectURL`, so the PDF goes to `chrome.downloads.download` as a base64 `data:` URL (built in chunks to avoid call-stack overflow on large arrays).
 - **Popup file picker:** extension messages can't carry binary data, so the popup base64-encodes the file and the background worker does the upload. That's why closing the popup doesn't cancel it.
 - Settings (summary length, backend URL) live in `chrome.storage.sync`. The backend URL defaults to `localhost:8000` and will default to the hosted URL in Stage 8.
+
+## 23. Cache summaries by file content, mode and pipeline version
+Many students summarize the same lecture, so the backend caches finished summaries (`backend/cache.py`):
+- **The key is the SHA-256 of the file's bytes**, computed while streaming the upload so the file is read only once. URLs can't be the key: PESU signs a new URL on every click. The key also includes the **mode**, the **model names** and a **hash of every prompt file**, so editing a prompt or switching models automatically skips summaries made under the old setup. A manual `PIPELINE_VERSION` covers code changes, such as extraction fixes.
+- **The cache stores the Markdown summary,** never the uploaded file (the privacy promise) and not the PDF. Rebuilding the PDF takes milliseconds, so PDF layout fixes apply to old summaries, and each student's PDF shows their own file name.
+- **One lock per key:** if two students click the same deck at the same moment, the second waits and then gets a hit, instead of both running the model for minutes. There's a test for this.
+- **Atomic writes** (temp file + rename): a crash can't leave a half-written summary that later requests would serve.
+- **Failures aren't cached**, so a model outage doesn't stick.
+- The response has an `X-Cache: HIT|MISS` header, and the extension shows "⚡ (cached)".
+- **Not yet:** cache expiry and size limits, and a shared cache across server instances (one folder on one server is enough until Stage 8 hosting).
