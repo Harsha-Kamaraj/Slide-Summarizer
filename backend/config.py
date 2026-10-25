@@ -12,6 +12,10 @@ LLM_API_KEY: str = os.getenv("LLM_API_KEY", "ollama")
 TEXT_MODEL: str = os.getenv("TEXT_MODEL", "gemma4:12b")
 VISION_MODEL: str = os.getenv("VISION_MODEL", "gemma4:12b")  # revisited in Stage 5
 LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
+# "none" turns off Gemma 4's thinking mode, which roughly doubles latency.
+# Set to "" to omit the field for providers that don't support it.
+LLM_REASONING_EFFORT: str = os.getenv("LLM_REASONING_EFFORT", "none")
+LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "2"))
 
 # --- Summarization ---
 # Slides per map step. Small enough to fit the model's context window, large
