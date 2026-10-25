@@ -11,6 +11,7 @@ their per-minute limits at busy times, so this keeps students from seeing
 """
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -99,11 +100,24 @@ def chat(
             error = exc
             continue
         try:
-            return data["choices"][0]["message"]["content"].strip()
+            return strip_thinking(data["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"Unexpected response from the model: {data!r:.200}") from exc
 
     raise error or LLMError("No LLM provider is configured.")
+
+
+# Some open models put their private reasoning in the reply itself, e.g.
+# Gemma via Google's API ("<thought>…</thought>") or Qwen/DeepSeek
+# ("<think>…</think>"), and not every provider lets us switch it off. It must
+# never reach a student's PDF.
+_THINKING = re.compile(r"<(thought|think)>.*?(</\1>|\Z)", re.IGNORECASE | re.DOTALL)
+
+
+def strip_thinking(text: str) -> str:
+    """Remove reasoning blocks; an unclosed one (reply cut off mid-thought)
+    is removed to the end."""
+    return _THINKING.sub("", text).strip()
 
 
 def _post_with_retries(provider: Provider, payload: dict) -> dict:

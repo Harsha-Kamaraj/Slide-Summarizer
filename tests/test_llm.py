@@ -153,3 +153,15 @@ def test_max_tokens_is_sent_when_given(fake_server):
     llm.chat([{"role": "user", "content": "hi"}])
     assert b'"max_tokens":900' in bodies[0].replace(b" ", b"")
     assert b"max_tokens" not in bodies[1]
+
+
+def test_reasoning_blocks_never_reach_the_answer(fake_server):
+    fake_server(lambda request: ok_reply("<thought>\n* plan the bullets\n</thought>* Real answer"))
+    assert llm.chat([{"role": "user", "content": "hi"}]) == "* Real answer"
+
+
+def test_strip_thinking_variants():
+    assert llm.strip_thinking("<think>x</think>Answer") == "Answer"
+    assert llm.strip_thinking("Answer <THOUGHT>hidden</THOUGHT> more") == "Answer  more"
+    assert llm.strip_thinking("<thought>cut off mid-reasoning") == ""
+    assert llm.strip_thinking("No tags here") == "No tags here"
