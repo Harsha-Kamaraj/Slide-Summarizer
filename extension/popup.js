@@ -8,7 +8,7 @@ const MODE_HINTS = {
   short: "The key ideas only, for a quick revision.",
 };
 
-const status = document.getElementById("status");
+const alertBox = document.getElementById("alert");
 const modeControl = document.getElementById("mode");
 const modeHint = document.getElementById("modeHint");
 const dropzone = document.getElementById("dropzone");
@@ -34,22 +34,21 @@ async function init() {
   checkBackend(settings.backendUrl);
 }
 
-// --- Status pill ------------------------------------------------------------
+// --- Server check (a warning appears only if something is wrong) ----------
 
-function setStatus(kind, text, title = "") {
-  status.className = `pill ${kind}`;
-  status.lastElementChild.textContent = text;
-  status.title = title;
+function setAlert(kind, text) {
+  alertBox.hidden = !text;
+  alertBox.className = `alert ${kind}`;
+  alertBox.textContent = text;
 }
 
 async function checkBackend(backendUrl) {
-  setStatus("", "Checking");
   try {
     const health = await (await fetch(`${backendUrl}/health`)).json();
-    if (health.ollama) setStatus("ok", "Ready", backendUrl);
-    else setStatus("warn", "AI offline", "The server is up, but it can't reach the AI model.");
+    if (health.ollama) setAlert("", "");
+    else setAlert("warn", "The summarizer is up, but its AI model isn't reachable right now.");
   } catch {
-    setStatus("bad", "Offline", `Can't reach the server at ${backendUrl}.`);
+    setAlert("bad", "Can't reach the summarizer server. Check your internet, or the server address in ⚙.");
   }
 }
 
@@ -180,7 +179,7 @@ document.getElementById("saveBackend").addEventListener("click", async () => {
   // Chrome only shows this prompt from a click, hence the Save button.
   const granted = await chrome.permissions.request({ origins: [`${new URL(backendUrl).origin}/*`] });
   if (!granted) {
-    setStatus("bad", "No access", "Permission denied: the extension can't contact that server.");
+    setAlert("bad", "Permission denied: the extension can't contact that server.");
     return;
   }
   await chrome.storage.sync.set({ backendUrl });

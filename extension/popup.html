@@ -75,32 +75,22 @@
         font-size: 11.5px;
         color: rgba(255, 255, 255, 0.72);
       }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 3px 9px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.14);
-        font-size: 11px;
-        color: #fff;
-        white-space: nowrap;
+      /* Shown only when the server or the AI can't be reached. */
+      .alert {
+        margin-bottom: 14px;
+        padding: 9px 11px;
+        border-radius: 10px;
+        font-size: 12px;
       }
-      .pill i {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.6);
+      .alert.warn {
+        border: 1px solid #f5d08a;
+        background: #fff8eb;
+        color: #92400e;
       }
-      .pill.ok i {
-        background: #4ade80;
-        box-shadow: 0 0 6px #4ade80;
-      }
-      .pill.warn i {
-        background: #fbbf24;
-      }
-      .pill.bad i {
-        background: #f87171;
+      .alert.bad {
+        border: 1px solid #f5b5b5;
+        background: #fef2f2;
+        color: #991b1b;
       }
 
       /* Sections */
@@ -398,10 +388,10 @@
         <div class="name">Slide Summarizer</div>
         <div class="tagline">Slides into study notes</div>
       </div>
-      <span id="status" class="pill"><i></i><span>Checking</span></span>
     </header>
 
     <main>
+    <div id="alert" class="alert" role="alert" hidden></div>
     <section>
       <span class="label">Summary</span>
       <div class="segmented" id="mode" role="radiogroup" aria-label="Summary length">
