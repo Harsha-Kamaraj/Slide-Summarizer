@@ -1,101 +1,465 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Slide Summarizer</title>
     <style>
+      /* PESU Academy palette (sampled from the site), so the extension feels
+         native next to it: sidebar navy, accent blue, PES-logo orange. */
+      :root {
+        --navy: #214f83;
+        --navy-deep: #283972;
+        --blue: #3f8fc8;
+        --link: #0091cd;
+        --orange: #e6873c;
+        --bg: #f5f5f5;
+        --card: #ffffff;
+        --border: #e4e6eb;
+        --text: #1f2933;
+        --muted: #5b6573;
+        --faint: #8a93a0;
+        --ok: #16a34a;
+        --warn: #d97706;
+        --bad: #dc2626;
+        --radius: 12px;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        width: 300px;
+        width: 340px;
         margin: 0;
-        padding: 14px;
-        font: 13px/1.4 -apple-system, "Segoe UI", sans-serif;
-        color: #222;
+        color: var(--text);
+        background: var(--bg);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Roboto,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      h1 {
-        margin: 0 0 10px;
-        font-size: 16px;
-        color: #1f4e79;
+      button,
+      input {
+        font: inherit;
+        color: inherit;
       }
+      main {
+        padding: 16px 16px 12px;
+      }
+
+      /* Header band in PESU navy */
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
+        color: #fff;
+      }
+      .logo {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        /* A light ring keeps the navy logo distinct on the navy header. */
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.35),
+          0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+      .brand-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .name {
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .tagline {
+        font-size: 11.5px;
+        color: rgba(255, 255, 255, 0.72);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        font-size: 11px;
+        color: #fff;
+        white-space: nowrap;
+      }
+      .pill i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.6);
+      }
+      .pill.ok i {
+        background: #4ade80;
+        box-shadow: 0 0 6px #4ade80;
+      }
+      .pill.warn i {
+        background: #fbbf24;
+      }
+      .pill.bad i {
+        background: #f87171;
+      }
+
+      /* Sections */
       section {
         margin-bottom: 14px;
       }
-      label.option {
+      .label {
         display: block;
-        margin: 3px 0;
+        margin-bottom: 7px;
+        font-size: 10.5px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--faint);
       }
-      .status {
-        padding: 6px 8px;
-        border-radius: 4px;
-        background: #f1f3f5;
+      .hint {
+        margin: 7px 2px 0;
+        font-size: 11.5px;
+        color: var(--muted);
       }
-      .status.ok {
-        background: #e6f4ea;
-        color: #1e6b34;
+
+      /* Segmented control (summary length) */
+      .segmented {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
       }
-      .status.bad {
-        background: #fdecea;
-        color: #a52714;
-      }
-      button {
-        width: 100%;
-        padding: 7px;
+      .segmented button {
+        position: relative;
+        z-index: 1;
+        padding: 7px 0;
+        border: 0;
+        background: none;
         font-weight: 600;
-        color: #fff;
-        background: #1f4e79;
-        border: none;
-        border-radius: 4px;
+        color: var(--muted);
         cursor: pointer;
       }
-      button:disabled {
-        opacity: 0.6;
+      .segmented button[aria-checked="true"] {
+        color: #fff;
+      }
+      .segmented .thumb {
+        position: absolute;
+        top: 3px;
+        bottom: 3px;
+        left: 3px;
+        width: calc(50% - 3px);
+        border-radius: 9px;
+        background: linear-gradient(135deg, var(--navy), var(--navy-deep));
+        box-shadow: 0 2px 6px rgba(33, 79, 131, 0.35);
+        transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.2, 1);
+      }
+      .segmented[data-mode="short"] .thumb {
+        transform: translateX(100%);
+      }
+
+      /* Card with switches (extras) */
+      .card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .row + .row {
+        border-top: 1px solid var(--border);
+      }
+      .row-text {
+        flex: 1;
+      }
+      .row-title {
+        font-weight: 600;
+      }
+      .row-sub {
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .switch {
+        position: relative;
+        flex: none;
+        width: 34px;
+        height: 20px;
+      }
+      .switch input {
+        position: absolute;
+        opacity: 0;
+      }
+      .switch span {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: #d5d9e0;
+        transition: background 0.2s;
+      }
+      .switch span::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: transform 0.2s;
+      }
+      .switch input:checked + span {
+        background: var(--blue);
+      }
+      .switch input:checked + span::after {
+        transform: translateX(14px);
+      }
+      .switch input:focus-visible + span {
+        outline: 2px solid var(--link);
+        outline-offset: 2px;
+      }
+
+      /* Drop zone (summarize a file) */
+      .dropzone {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px;
+        border: 1.5px dashed #c5ccd6;
+        border-radius: var(--radius);
+        background: var(--card);
+        color: var(--muted);
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .dropzone:hover,
+      .dropzone.over {
+        border-color: var(--blue);
+        background: #f0f6fc;
+      }
+      .dropzone.has-file {
+        border-style: solid;
+        border-color: var(--blue);
+        color: var(--text);
+      }
+      .dropzone svg {
+        flex: none;
+        color: var(--blue);
+      }
+      .dropzone u {
+        color: var(--link);
+        text-underline-offset: 2px;
+      }
+      #fileLabel {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .primary {
+        width: 100%;
+        margin-top: 10px;
+        padding: 10px;
+        border: 0;
+        border-radius: var(--radius);
+        background: linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 100%);
+        color: #fff;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+        box-shadow: 0 3px 10px rgba(33, 79, 131, 0.3);
+        cursor: pointer;
+        transition:
+          transform 0.1s,
+          opacity 0.2s,
+          box-shadow 0.2s;
+      }
+      .primary:hover:not(:disabled) {
+        box-shadow: 0 4px 14px rgba(33, 79, 131, 0.45);
+      }
+      .primary:active:not(:disabled) {
+        transform: scale(0.99);
+      }
+      .primary:disabled {
+        opacity: 0.4;
+        box-shadow: none;
         cursor: default;
       }
-      input[type="url"] {
-        width: 100%;
-        box-sizing: border-box;
+      .message {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
       }
-      small {
-        color: #666;
+      .message:empty {
+        display: none;
       }
-      details {
-        color: #555;
+      .message.error {
+        color: var(--bad);
+      }
+      .spinner {
+        flex: none;
+        width: 13px;
+        height: 13px;
+        margin-top: 2px;
+        border: 2px solid #d5d9e0;
+        border-top-color: var(--navy);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Footer and settings */
+      footer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+      .tip {
+        flex: 1;
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .tip b {
+        color: var(--navy);
+        font-weight: 650;
+      }
+      .tip b span {
+        color: var(--orange);
+      }
+      .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .icon-btn:hover,
+      .icon-btn[aria-expanded="true"] {
+        border-color: var(--blue);
+        color: var(--navy);
+      }
+      .settings {
+        margin: 12px 0 0;
+      }
+      .url-row {
+        display: flex;
+        gap: 6px;
+      }
+      .url-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 7px 10px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--card);
+        outline: none;
+      }
+      .url-row input:focus {
+        border-color: var(--blue);
+      }
+      .ghost {
+        padding: 7px 12px;
+        border: 1px solid var(--navy);
+        border-radius: 9px;
+        background: var(--card);
+        color: var(--navy);
+        font-weight: 650;
+        cursor: pointer;
+      }
+      .ghost:hover {
+        background: #f0f6fc;
       }
     </style>
   </head>
   <body>
-    <h1>📝 Slide Summarizer</h1>
+    <header class="brand">
+      <img class="logo" src="icons/logo.png" alt="" />
+      <div class="brand-text">
+        <div class="name">Slide Summarizer</div>
+        <div class="tagline">Slides into study notes</div>
+      </div>
+      <span id="status" class="pill"><i></i><span>Checking</span></span>
+    </header>
 
+    <main>
     <section>
-      <div id="status" class="status">Checking backend…</div>
+      <span class="label">Summary</span>
+      <div class="segmented" id="mode" role="radiogroup" aria-label="Summary length">
+        <button type="button" role="radio" data-mode="detailed">Detailed</button>
+        <button type="button" role="radio" data-mode="short">Short</button>
+        <span class="thumb"></span>
+      </div>
+      <p class="hint" id="modeHint"></p>
+    </section>
+
+    <section class="card">
+      <label class="row">
+        <div class="row-text">
+          <div class="row-title">Exam questions</div>
+          <div class="row-sub">Likely questions with model answers</div>
+        </div>
+        <span class="switch"><input type="checkbox" id="examQuestions" /><span></span></span>
+      </label>
+      <label class="row">
+        <div class="row-text">
+          <div class="row-title">Flashcards</div>
+          <div class="row-sub">Quick question-and-answer cards</div>
+        </div>
+        <span class="switch"><input type="checkbox" id="flashcards" /><span></span></span>
+      </label>
     </section>
 
     <section>
-      <strong>Summary length</strong>
-      <label class="option"><input type="radio" name="mode" value="detailed" /> Detailed (explained, with formulas)</label>
-      <label class="option"><input type="radio" name="mode" value="short" /> Short (quick revision)</label>
+      <span class="label">Summarize a file</span>
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="file" accept=".pptx,.ppt,.pdf" hidden />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+        </svg>
+        <span id="fileLabel">Drop a .pdf or .pptx, or <u>browse</u></span>
+      </label>
+      <button id="summarize" class="primary" type="button" disabled>Summarize</button>
+      <div id="message" class="message" role="status"></div>
     </section>
 
-    <section>
-      <strong>Also include</strong>
-      <label class="option"><input type="checkbox" id="examQuestions" /> Likely exam questions (with answers)</label>
-      <label class="option"><input type="checkbox" id="flashcards" /> Flashcards</label>
+    <footer>
+      <span class="tip">On PESU Academy, use <b><span>✦</span> Summarize</b> next to any deck.</span>
+      <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+        </svg>
+      </button>
+    </footer>
+    <section id="settings" class="settings" hidden>
+      <span class="label">Server</span>
+      <div class="url-row">
+        <input id="backendUrl" type="url" spellcheck="false" />
+        <button id="saveBackend" class="ghost" type="button">Save</button>
+      </div>
     </section>
-
-    <section>
-      <strong>Summarize a file</strong>
-      <p><small>On PESU Academy, use the 📝 Summarize buttons next to each slide deck. Or pick a .pptx, .ppt or .pdf here:</small></p>
-      <input id="file" type="file" accept=".pptx,.ppt,.pdf" />
-      <p><button id="summarize" disabled>Summarize file</button></p>
-      <div id="message"></div>
-    </section>
-
-    <details>
-      <summary>Settings</summary>
-      <p>
-        <label>Backend URL<br /><input id="backendUrl" type="url" /></label>
-        <button id="saveBackend" type="button" style="margin-top: 6px">Save</button>
-      </p>
-    </details>
+    </main>
 
     <script type="module" src="popup.js"></script>
   </body>

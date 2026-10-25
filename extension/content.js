@@ -16,6 +16,23 @@ const MARK = "data-slide-summarizer"; // set on links that already have a button
 // background worker reach the right button.
 const pending = new Map();
 
+// Icons are fixed markup (no user data), so setting them as HTML is safe.
+const ICONS = {
+  idle: '<svg class="ss-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 2l2 6.5L19.5 10 13 12l-2 6.5L9 12 2.5 10 9 8.5z"/><path d="M19 14l1 2.6 2.6 1-2.6 1L19 21.2l-1-2.6-2.6-1 2.6-1z"/></svg>',
+  busy: '<span class="ss-spinner" aria-hidden="true"></span>',
+  done: '<svg class="ss-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  error: '<svg class="ss-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg>',
+};
+
+function setState(button, state, text) {
+  button.className = `ss-btn ${state === "done" ? "ss-done" : state === "error" ? "ss-error" : ""}`;
+  button.disabled = state === "busy";
+  button.innerHTML = ICONS[state];
+  const label = document.createElement("span");
+  label.textContent = text;
+  button.append(label);
+}
+
 function addButtons() {
   for (const link of document.querySelectorAll(`${SLIDE_LINK}:not([${MARK}])`)) {
     const id = link.getAttribute("onclick").match(ID_PATTERN)?.[1];
@@ -24,8 +41,7 @@ function addButtons() {
 
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "slide-summarizer-btn";
-    button.textContent = "📝 Summarize";
+    setState(button, "idle", "Summarize");
     button.addEventListener("click", (event) => {
       // The button sits next to PESU's link; don't let the click reach it.
       event.preventDefault();
@@ -40,12 +56,11 @@ function addButtons() {
 async function summarize(button, id, title) {
   const url = new URL(`/Academy/a/referenceMeterials/downloadslidecoursedoc/${id}`, location.origin);
   const requestId = crypto.randomUUID();
-  button.disabled = true;
-  button.textContent = "⏳ Uploading…";
+  setState(button, "busy", "Uploading…");
   button.title = "";
-  // Re-summarizing: remove the previous run's feedback buttons.
-  const oldFeedback = button.nextElementSibling;
-  if (oldFeedback?.classList.contains("slide-summarizer-feedback")) oldFeedback.remove();
+  // Re-summarizing: remove the previous run's feedback or error note.
+  const old = button.nextElementSibling;
+  if (old?.classList.contains("ss-feedback")) old.remove();
   pending.set(requestId, button);
 
   const result = await chrome.runtime
@@ -53,21 +68,27 @@ async function summarize(button, id, title) {
     .catch((error) => ({ ok: false, error: error.message }));
   pending.delete(requestId);
 
-  button.disabled = false;
   if (result?.ok) {
-    button.textContent = result.cached ? "⚡ Saved to Downloads (cached)" : "✅ Saved to Downloads";
+    setState(button, "done", result.cached ? "Saved · instant" : "Saved to Downloads");
     if (result.summaryId) button.after(feedbackButtons(result.summaryId));
   } else {
-    button.textContent = "⚠️ Failed: click to retry";
+    setState(button, "error", "Retry");
     button.title = result?.error || "Unknown error";
-    alert(`Slide Summarizer: ${button.title}`);
+    button.after(note(button.title));
   }
+}
+
+function note(text) {
+  const span = document.createElement("span");
+  span.className = "ss-feedback ss-note-error";
+  span.textContent = text;
+  return span;
 }
 
 function feedbackButtons(summaryId) {
   const box = document.createElement("span");
-  box.className = "slide-summarizer-feedback";
-  box.append("Helpful? ");
+  box.className = "ss-feedback";
+  box.append("Helpful?");
   for (const [emoji, rating] of [["👍", "up"], ["👎", "down"]]) {
     const button = document.createElement("button");
     button.type = "button";
@@ -76,7 +97,7 @@ function feedbackButtons(summaryId) {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      box.textContent = "Thanks!";
+      box.textContent = "Thanks for the feedback";
       await chrome.runtime.sendMessage({ type: "feedback", summaryId, rating }).catch(() => {});
     });
     box.append(button);
@@ -87,7 +108,7 @@ function feedbackButtons(summaryId) {
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type !== "summarize-progress") return;
   const button = pending.get(message.requestId);
-  if (button && message.text) button.textContent = `⏳ ${message.text}`;
+  if (button && message.text) setState(button, "busy", message.text);
 });
 
 // PESU is a single-page app: opening the Slides tab changes the page without
