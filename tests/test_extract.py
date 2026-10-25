@@ -132,3 +132,39 @@ def test_pdf_tables_become_rows(tmp_path):
     assert "sky | water | enjoy" in slide.text
     assert "sunny | cool | yes" in slide.text
     assert "\nsky\n" not in f"\n{slide.text}\n"  # no one-cell-per-line leftovers
+
+
+def test_pptx_superscripts_become_exponents(tmp_path):
+    from pptx import Presentation
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Concept Space"
+    paragraph = slide.placeholders[1].text_frame.paragraphs[0]
+    for text, superscript in [
+        ("#Concepts = 2", False),
+        ("81", True),
+        (" and +", False),
+        ("ve", True),
+    ]:
+        run = paragraph.add_run()
+        run.text = text
+        if superscript:
+            run.font._rPr.set("baseline", "30000")
+    path = tmp_path / "sup.pptx"
+    prs.save(path)
+
+    text = extract_deck(path).slides[0].text
+    assert "#Concepts = 2^81" in text
+    assert "+ve" in text  # superscript after "+" isn't an exponent
+
+
+def test_exponent_marking_rules():
+    from backend.extract import _exponent
+
+    assert _exponent("2", "81") == "^81"
+    assert _exponent("2^(2", "d") == "^d"
+    assert _exponent("(x+1)", "2 ") == "^2 "
+    assert _exponent("e", "x+1") == "^(x+1)"
+    assert _exponent("+", "ve") == "ve"
+    assert _exponent("2", " ") == " "

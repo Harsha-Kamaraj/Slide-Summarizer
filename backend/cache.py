@@ -24,7 +24,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 # Bump when extraction or summarization *code* changes in a way that should
 # invalidate old summaries. Prompt and model changes are detected automatically.
-PIPELINE_VERSION = "1"
+PIPELINE_VERSION = "2"  # 2: exponents kept in PDF/PPTX extraction
 
 
 # Prompt files that shape the summary itself. Extras have their own prompt, so

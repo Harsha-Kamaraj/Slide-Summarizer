@@ -109,7 +109,7 @@ def _shape_texts(shapes) -> list[str]:
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             texts.extend(_shape_texts(shape.shapes))
         elif shape.has_text_frame:
-            text = shape.text_frame.text.strip()
+            text = _frame_text(shape.text_frame)
             if text:
                 texts.append(text)
         elif shape.has_table:
@@ -120,6 +120,23 @@ def _shape_texts(shapes) -> list[str]:
                 if any(cells):
                     texts.append(" | ".join(cells))
     return texts
+
+
+def _frame_text(text_frame) -> str:
+    """A text frame's paragraphs, with superscript runs written as exponents
+    (python-pptx's .text drops the raising, turning "2⁸¹" into "281")."""
+    paragraphs = []
+    for paragraph in text_frame.paragraphs:
+        text = ""
+        for run in paragraph.runs:
+            # PowerPoint stores superscript as a positive baseline offset.
+            baseline = run.font._rPr.get("baseline") if run.font._rPr is not None else None
+            if baseline and int(baseline) > 0:
+                text += _exponent(text, run.text)
+            else:
+                text += run.text
+        paragraphs.append(text)
+    return "\n".join(paragraphs).strip()
 
 
 def _first_title(slides: list[Slide]) -> str:
@@ -211,10 +228,11 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
 
     # Text blocks outside the tables, in reading order.
     outside = []
-    for x0, y0, x1, y1, text, _, block_type in page.get_text("blocks"):
+    for block in page.get_text("dict")["blocks"]:
+        x0, y0, x1, y1 = block["bbox"]
         centre = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
-        if block_type == 0 and not any(centre in rect for rect in table_rects):
-            outside.append(text)
+        if block["type"] == 0 and not any(centre in rect for rect in table_rects):
+            outside.append(_block_text(block))
     lines = _clean_lines("\n".join(outside))
 
     for table in tables:
@@ -233,6 +251,41 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
         keep = [c for c in range(len(rows[0]) if rows else 0) if any(row[c] for row in rows)]
         lines += [" | ".join(row[c] for c in keep) for row in rows]
     return lines
+
+
+_SUPERSCRIPT_FLAG = 1  # PyMuPDF span flag bit for superscript text
+
+
+def _exponent(before: str, piece: str) -> str:
+    """Write superscript text: "^81" after a digit, letter or ")", since
+    that's an exponent; otherwise unchanged (the "ve" in "+ve")."""
+    exponent = piece.strip()
+    if not exponent or not (before[-1:].isalnum() or before[-1:] == ")"):
+        return piece
+    marked = f"^{exponent}" if exponent.isalnum() else f"^({exponent})"
+    return marked + (" " if piece.endswith(" ") else "")
+
+
+def _block_text(block: dict) -> str:
+    """A text block's lines, with exponents kept as "^".
+
+    Plain extraction drops the raising of superscripts, so "2⁸¹" on a slide
+    became "281" and the model wrote "2^81 = 281". A superscript right after
+    a digit, letter or ")" is an exponent and becomes "^81" (or "^(x+1)" if it
+    isn't a single token). Other superscripts, like the "ve" in "+ve", are
+    left as plain text.
+    """
+    lines = []
+    for line in block["lines"]:
+        text = ""
+        for span in line["spans"]:
+            piece = span["text"]
+            if span["flags"] & _SUPERSCRIPT_FLAG:
+                text += _exponent(text, piece)
+            else:
+                text += piece
+        lines.append(text)
+    return "\n".join(lines)
 
 
 # Bullet glyphs PowerPoint exports as text, sometimes on a line of their own.
