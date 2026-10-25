@@ -1,0 +1,26 @@
+"""Central settings. Every value can be overridden with an env var, so the same
+code runs against local Ollama in development and a hosted API in production."""
+
+import os
+
+# --- LLM provider (OpenAI-compatible Chat Completions API) ---
+# Ollama serves the OpenAI-compatible API under /v1. For a hosted provider,
+# change these three env vars; no code changes needed.
+LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+# Ollama ignores the key, but the OpenAI format expects one to be sent.
+LLM_API_KEY: str = os.getenv("LLM_API_KEY", "ollama")
+TEXT_MODEL: str = os.getenv("TEXT_MODEL", "gemma4:12b")
+VISION_MODEL: str = os.getenv("VISION_MODEL", "gemma4:12b")  # revisited in Stage 5
+LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
+
+# --- Summarization ---
+# Slides per map step. Small enough to fit the model's context window, large
+# enough that related slides are summarized together.
+CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "8"))
+# Below this many words, a slide is treated as "image-heavy" (Stage 5).
+IMAGE_HEAVY_WORD_THRESHOLD: int = int(os.getenv("IMAGE_HEAVY_WORD_THRESHOLD", "15"))
+
+# --- Upload limits ---
+MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "50"))
+MAX_SLIDES: int = int(os.getenv("MAX_SLIDES", "150"))
+ALLOWED_EXTENSIONS: tuple[str, ...] = (".pptx", ".ppt", ".pdf")

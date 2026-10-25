@@ -1,0 +1,14 @@
+# Slide parsing
+python-pptx
+PyMuPDF
+# LLM calls (OpenAI-compatible HTTP API)
+httpx
+# PDF output
+reportlab
+# API server (Stage 3)
+fastapi
+uvicorn[standard]
+python-multipart
+# Dev
+pytest
+black
