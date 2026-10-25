@@ -71,3 +71,20 @@ FONT_DIRS: list[str] = [
 # --- Cache ---
 # Finished summaries (Markdown) keyed by file hash + mode + prompt/model version.
 CACHE_DIR: str = os.getenv("CACHE_DIR", str(Path(__file__).parent.parent / ".cache" / "summaries"))
+
+# --- Serving many students (Stage 8) ---
+# Jobs processed at once; the rest wait in a queue. 1 suits a laptop running
+# Ollama; a hosted API can take more.
+JOB_WORKERS: int = int(os.getenv("JOB_WORKERS", "1"))
+# Finished jobs are forgotten after this long (their summaries stay cached).
+JOB_TTL_SECONDS: int = int(os.getenv("JOB_TTL_SECONDS", "3600"))
+# New summaries per student (per IP address) per day; cached summaries don't
+# count. 0 = unlimited (local development).
+DAILY_LIMIT: int = int(os.getenv("DAILY_LIMIT", "0"))
+# Behind a hosting proxy, the student's IP is in X-Forwarded-For rather than
+# the connection address. Only enable when such a proxy is in front.
+TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "0") == "1"
+# Thumbs up/down feedback, one JSON object per line.
+FEEDBACK_FILE: str = os.getenv(
+    "FEEDBACK_FILE", str(Path(__file__).parent.parent / ".data" / "feedback.jsonl")
+)

@@ -16,6 +16,11 @@ def isolated_cache(tmp_path, monkeypatch):
     """Each test gets an empty summary cache, so tests can't affect each
     other (or the real cache) through cached results."""
     monkeypatch.setattr(config, "CACHE_DIR", str(tmp_path / "cache"))
+    # Same for feedback storage and the per-student daily counts.
+    monkeypatch.setattr(config, "FEEDBACK_FILE", str(tmp_path / "feedback.jsonl"))
+    from backend import ratelimit
+
+    ratelimit.reset()
 
 
 @pytest.fixture

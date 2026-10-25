@@ -25,3 +25,6 @@ eval/sample_pages/
 
 # Cached summaries (may contain lecture content)
 .cache/
+
+# Runtime data (feedback)
+.data/

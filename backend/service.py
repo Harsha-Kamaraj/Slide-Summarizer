@@ -52,3 +52,15 @@ def run(
             sections.append(section)
 
     return "\n\n".join([summary, *sections]), not generated
+
+
+def summary_id(content_hash: str, mode: str) -> str:
+    """A stable id for a deck's summary (its cache key), used to attach
+    feedback. It's a hash, so it reveals nothing about the file."""
+    return cache.cache_key(content_hash, mode)
+
+
+def is_cached(content_hash: str, mode: str, extras: list[str]) -> bool:
+    """Would this request be answered entirely from the cache?"""
+    parts = ["summary", *extras]
+    return all(cache.get(cache.cache_key(content_hash, mode, part)) for part in parts)
