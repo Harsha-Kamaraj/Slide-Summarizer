@@ -53,3 +53,24 @@ curl -F file=@path/to/deck.pdf -F mode=detailed localhost:8000/summarize -o summ
 4. The toolbar popup shows backend status, lets you choose **Detailed/Short**, and can summarize a file from your computer.
 
 After changing extension code, click the ↻ reload icon on the extension's card in `chrome://extensions` and refresh the PESU tab.
+
+## Image-heavy slides (Stage 5)
+Slides with fewer than 15 words (diagrams, screenshots, quotes inside pictures) are rendered as images and described by a vision model (`VISION_MODEL`, default `gemma4:12b`) before summarizing. Turn it off with `VISION_ENABLED=0`; cap it with `MAX_VISION_SLIDES`.
+
+## Evaluation (Stage 6)
+```bash
+.venv/bin/python -m eval.evaluate                         # all decks in eval/sample_decks
+.venv/bin/python -m eval.benchmark eval/sample_decks/2.pdf  # compare model setups
+```
+`eval/evaluate.py` records time, slides, image slides described, and the % of summary claims an LLM judge finds supported by the slides (`JUDGE_MODEL`, ideally stronger than the summarizer). Numbers go to `eval/results.md`; summaries and flagged claims go to the gitignored `eval/summaries/`.
+
+## Configuration
+All settings are env vars read in `backend/config.py`, for example:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_BASE_URL` / `LLM_API_KEY` | Ollama on localhost | Any OpenAI-compatible provider |
+| `TEXT_MODEL` / `NOTES_MODEL` | `gemma4:12b` | Merge model / chunk-notes model |
+| `VISION_MODEL`, `VISION_ENABLED` | `gemma4:12b`, `1` | Image-slide descriptions |
+| `LLM_PARALLEL_CALLS` | `1` | Concurrent chunk calls (raise for hosted APIs) |
+| `CACHE_DIR` | `.cache/summaries` | Cached summaries |
