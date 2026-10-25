@@ -67,3 +67,12 @@ Feedback on detailed mode: keep bullet points, but each bullet should *explain* 
 - **llama3.1:8b notes + 12B merge:** 398 s, the worst quality (7 topics, 1 formula, practice problems dropped).
 
 So 12B stays the default, and `NOTES_MODEL=gemma3:4b` is a quick-iteration option. A deck uses about 16.5k tokens (10k in, 6k out), which sets how many new decks a free hosted tier can handle per day. The benchmark also found a faithfulness error in the 12B output: a worked-example step named the wrong attribute and gave a reason the slides don't state. That makes the Stage 6 "is every bullet supported by the slides?" check essential, not optional.
+
+## 19. API design: sync endpoint, temp folder, meaningful status codes
+- **`def`, not `async def`, for `/summarize`.** Summarizing blocks for minutes (HTTP calls to the model and CPU work in parsing and PDF building). If an `async` endpoint did that, it would block FastAPI's event loop and freeze every other request. FastAPI runs a plain `def` endpoint in a worker thread, so other requests stay responsive. Verified: `/health` answered in 0.04 s while a summary was running.
+- **Uploads go to a temp folder under their original name** and are deleted when the request ends. That's the privacy promise (we keep no student files), and it makes error messages and fallback titles say "Lecture3.pptx" instead of "tmpab12". The filename is reduced to its last path component, so a crafted name like `../../x.pdf` can't escape the folder.
+- **Size limit while streaming:** the upload is read in 1 MB pieces and rejected as soon as it passes `MAX_UPLOAD_MB`, rather than after loading it all into memory.
+- **Status codes say what went wrong:** 415 for the wrong type, 413 for too large, 422 for an unreadable or invalid file, 503 when the LLM is unavailable. Each comes with a readable `detail` message the extension can show students directly, never a stack trace.
+- **`/health` checks the LLM via `GET /models`,** which is part of the OpenAI-compatible API, so it works unchanged with Ollama or a hosted provider and costs no generation.
+- **Known limit:** one HTTP request is held open for the whole summary (minutes). That's fine locally, but proxies and browsers may time out. Stage 8 replaces it with `POST /jobs` + `GET /jobs/{id}` polling and progress updates.
+- `extras` (exam questions, flashcards) from the original API spec is deferred to Stage 7 rather than accepted and silently ignored.
