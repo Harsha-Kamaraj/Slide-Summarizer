@@ -2,3 +2,4 @@
 -r backend/requirements.txt
 pytest
 black
+huggingface_hub  # scripts/deploy_hf_space.py
