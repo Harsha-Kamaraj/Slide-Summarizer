@@ -231,6 +231,7 @@ def _formula_markup(formula: str) -> str:
     superscript, "x_i" -> x with a subscript. Innermost brackets first, so
     nested powers like 2^(2^d) come out nested."""
     text = html.escape(formula, quote=False)
+    text = re.sub(r"\s*([\^_])\s*", r"\1", text)  # "2 ^ (x)" -> "2^(x)"
     for marker, tag in (("^", "super"), ("_", "sub")):
         bracketed = re.compile(re.escape(marker) + r"\(([^()]*)\)")
         while bracketed.search(text):

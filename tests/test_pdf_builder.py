@@ -110,3 +110,4 @@ def test_formula_markup_superscripts_and_subscripts():
     assert _formula_markup("2^(2^d)") == "2<super>2<super>d</super></super>"
     assert _formula_markup("h(x_i) - y_i") == "h(x<sub>i</sub>) - y<sub>i</sub>"
     assert _formula_markup("a < b") == "a &lt; b"
+    assert _formula_markup("2 ^ (3 x 2)") == "2<super>3 x 2</super>"
