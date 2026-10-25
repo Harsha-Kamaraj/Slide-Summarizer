@@ -80,3 +80,31 @@ def test_corrupt_file_gives_clear_error(tmp_path, name):
 def test_missing_file(tmp_path):
     with pytest.raises(ExtractionError, match="File not found"):
         extract_deck(tmp_path / "nope.pptx")
+
+
+def test_pdf_strips_repeated_headers_and_bullet_glyphs(tmp_path):
+    # Mimics the college exports: a course-name header on every page, above
+    # the real slide heading, plus bullet glyphs exported as text.
+    import pymupdf
+
+    doc = pymupdf.open()
+    for heading in ["Concept", "Feature Space", "Version Space", "Inductive Bias"]:
+        page = doc.new_page()
+        page.insert_text((72, 40), "Machine Learning", fontsize=10)
+        page.insert_text((72, 80), heading, fontsize=20)
+        # Body lines differ per page; identical ones would count as boilerplate.
+        page.insert_text((72, 120), f"• point about {heading}", fontsize=12)
+        page.insert_text((72, 140), f"-0.5 is a weight for {heading}", fontsize=12)
+    path = tmp_path / "headers.pdf"
+    doc.save(path)
+
+    slides = extract_deck(path).slides
+    assert [s.title for s in slides] == [
+        "Concept",
+        "Feature Space",
+        "Version Space",
+        "Inductive Bias",
+    ]
+    assert "Machine Learning" not in slides[0].text
+    assert "- point about Concept" in slides[0].text
+    assert "-0.5 is a weight for Concept" in slides[0].text  # minus sign untouched

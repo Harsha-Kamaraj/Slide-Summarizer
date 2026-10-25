@@ -4,6 +4,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -180,15 +181,43 @@ def _extract_pdf(path: Path) -> Deck:
     except (pymupdf.FileDataError, RuntimeError) as exc:
         raise ExtractionError(f"Could not open '{path.name}': it may be corrupt.") from exc
 
-    slides = []
     with doc:
-        for number, page in enumerate(doc, start=1):
-            lines = [line.strip() for line in page.get_text().splitlines() if line.strip()]
-            # PDFs have no "title" field per page; the first line of a slide
-            # export is almost always the slide heading.
-            title = lines[0] if lines else ""
-            text = "\n".join(lines[1:])
-            slides.append(Slide(number=number, title=title, text=text))
+        pages = [_clean_lines(page.get_text()) for page in doc]
         meta_title = (doc.metadata or {}).get("title", "")
 
+    boilerplate = _repeated_lines(pages)
+    slides = []
+    for number, lines in enumerate(pages, start=1):
+        lines = [line for line in lines if line not in boilerplate]
+        # PDFs have no "title" field per page; once headers/footers are gone,
+        # the first line of a slide export is almost always the slide heading.
+        title = lines[0] if lines else ""
+        text = "\n".join(lines[1:])
+        slides.append(Slide(number=number, title=title, text=text))
+
     return Deck(title=_pick_title(meta_title, slides, path.stem), slides=slides)
+
+
+# Bullet glyphs PowerPoint exports as text, sometimes on a line of their own.
+_BULLETS = "•·●■◆▪○◦➢➤✓"  # not "-": it could be a minus sign
+
+
+def _clean_lines(page_text: str) -> list[str]:
+    lines = []
+    for raw in page_text.splitlines():
+        line = raw.strip()
+        if not line.strip(_BULLETS + " "):
+            continue  # empty, or a bullet glyph with no text
+        if line[0] in _BULLETS:
+            line = "- " + line.lstrip(_BULLETS + " ")
+        lines.append(line)
+    return lines
+
+
+def _repeated_lines(pages: list[list[str]]) -> set[str]:
+    """Lines that appear on at least half the pages: running headers, footers,
+    course names. They carry no slide content and confuse title detection."""
+    if len(pages) < 4:  # too few pages to tell boilerplate from content
+        return set()
+    counts = Counter(line for lines in pages for line in set(lines))
+    return {line for line, n in counts.items() if n >= len(pages) / 2}
