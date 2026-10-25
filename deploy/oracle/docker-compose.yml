@@ -1,0 +1,35 @@
+# Production stack for a single server (e.g. Oracle Cloud Always Free VM):
+#   caddy: public HTTPS on ports 80/443, certificates obtained automatically
+#   app:   the backend container, reachable only through caddy
+services:
+  app:
+    build: ../..
+    env_file: .env
+    environment:
+      # On a real disk, the cache and feedback survive restarts.
+      CACHE_DIR: /home/app/data/cache
+      FEEDBACK_FILE: /home/app/data/feedback.jsonl
+      TRUST_PROXY_HEADERS: "1" # caddy passes the student's IP in X-Forwarded-For
+    volumes:
+      - app-data:/home/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

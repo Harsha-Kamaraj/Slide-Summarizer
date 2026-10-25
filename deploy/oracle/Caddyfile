@@ -1,0 +1,4 @@
+# Caddy gets and renews a free HTTPS certificate for $DOMAIN automatically.
+{$DOMAIN} {
+	reverse_proxy app:7860
+}
