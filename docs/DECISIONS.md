@@ -23,3 +23,8 @@ The machine has both 3.13 and 3.14. We use 3.13 because every dependency (PyMuPD
 
 ## 6. `backend` is a Python package, run from the repo root
 The Stage 1 CLI is `python -m backend.summarize`, which requires `backend/` to be a package imported from the repo root. To keep one consistent import style (`from backend.config import ...`), the API server will also be started from the root with `uvicorn backend.main:app`, not with `cd backend && uvicorn main:app`. Mixing the two styles breaks imports in one mode or the other.
+
+## 7. PDF is a first-class input, not an afterthought
+The college site (PESU Academy, `pesuacademy.com/Academy/s/studentProfilePESU#`) lists slides under Course → Unit → **Slides** tab. Each entry (e.g. "ML models") has an eye icon that opens a viewer, and from there the student can save the deck as a PDF. Lecturers upload .pptx, .ppt and PDF, but what the browser actually receives is often a PDF. So the extractor treats all three as equal inputs: .pptx through python-pptx (which also gives us speaker notes), PDF through PyMuPDF (one page = one slide), and legacy .ppt by converting to .pptx with LibreOffice headless first.
+
+The site is a single-page app (the URL ends in `#` and content changes without page loads), so the Stage 4 content script will need a `MutationObserver` to notice when the Slides tab renders, not just a one-time scan on page load. The exact request the eye icon makes is still to be captured from DevTools before Stage 4.
