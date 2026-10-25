@@ -52,8 +52,12 @@ def extract_claims(markdown: str) -> list[str]:
 
 def _is_statement(claim: str) -> bool:
     """Skip fragments that state nothing checkable: a label introducing the
-    next lines ("Steps:"), an empty formula, a lone number."""
+    next lines ("Steps:"), an empty formula, a lone number, and the honest
+    placeholders the prompts ask for ("Solution not given in slides"), which
+    a judge would otherwise wrongly count as unsupported."""
     text = re.sub(r"^(Formula:|\d+\.)\s*", "", claim).strip()
+    if re.search(r"not (given|covered) in (the )?slides", text, re.IGNORECASE):
+        return False
     return len(text.split()) >= 3 and not text.endswith(":")
 
 

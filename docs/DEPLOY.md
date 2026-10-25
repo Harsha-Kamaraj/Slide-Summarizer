@@ -21,6 +21,16 @@ Any OpenAI-compatible provider works. Two free options:
 
 Create a key in the provider's console and pick model names from its model list: a text model, and a vision-capable model for diagram slides. If there's no vision model, set `VISION_ENABLED=0`.
 
+**Measured on Groq (October 2026):** use the large model for both text steps. Using the small model for chunk notes was 5× faster, but 10% of summary claims were unsupported (vs 2%), mostly wrong worked-example steps (DECISIONS #28).
+
+| Variable | Groq value |
+|---|---|
+| `NOTES_MODEL`, `TEXT_MODEL` | `openai/gpt-oss-120b` |
+| `VISION_MODEL` | `qwen/qwen3.8-27b` (the only Groq model that reads images; ~1000 output tokens/min on the free tier) |
+| `LLM_REASONING_EFFORT` | `low` (gpt-oss rejects `none`) |
+| `LLM_MAX_RETRIES` | `6` (rides out per-minute limits) |
+| `FALLBACK_*` | strongly recommended: the free tier allows ~200k tokens/day per model, roughly 8–10 new detailed summaries a day before the fallback (or the cache) has to cover the rest |
+
 **Never put keys in the code or the extension.** They go in the host's secret settings only.
 
 ## 2. Deploy the backend (Hugging Face Spaces, free)

@@ -72,3 +72,11 @@ def test_fragments_are_not_claims():
     claims = evaluate.extract_claims(summary)
     assert "Steps:" not in claims and "Formula: " not in claims
     assert all("sunny" not in c or "{" in c for c in claims)
+
+
+def test_honest_placeholders_are_not_scored():
+    summary = SUMMARY.replace(
+        "- Find-S ignores negative examples.",
+        "- Find-S ignores negative examples.\n- Solution not given in slides.",
+    )
+    assert not any("not given" in c for c in evaluate.extract_claims(summary))

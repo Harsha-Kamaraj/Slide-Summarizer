@@ -139,3 +139,15 @@ Tried on Groq with a real key (October 2026). Speed was 170–310 output tokens/
 - **Limits are per model, so the work is split across models to add up their quotas:** `gpt-oss-20b` for chunk notes, `gpt-oss-120b` for the merge and judging, `qwen3.8-27b` for vision only. `gpt-oss-*` rejects `reasoning_effort: "none"`, so hosted runs use `low`.
 - **The judge no longer sends the whole deck** (about 7k tokens with image descriptions, over the per-minute limit in one request). For each claim it picks the 3 slides sharing the most words and sends only those, 5 claims per call. This is cheaper and scales to long decks. If the right slide isn't picked, a true claim counts as unsupported, so the score errs on the strict side.
 - **The first hosted evaluation found real faithfulness problems**, which is what Stage 6 is for. `gpt-oss-120b` solved a practice problem the slides only pose (computing 27 instances / 2^27 / 65 hypotheses itself) and wrote textbook definitions for terms the slides never define. The system prompt now says to state unsolved problems with "Solution not given in slides" and to never invent definitions. The evaluation also stopped counting fragments ("Steps:", empty formulas) as claims, since they were inflating the unsupported share.
+
+## 28. Hosted model choice: the large model for both text steps
+Same deck (35 slides, worked-example heavy), same prompts, same judge (`gpt-oss-120b`), one run each on Groq:
+
+| Notes model | Merge model | Time | Supported | Partial | Unsupported |
+|---|---|---|---|---|---|
+| gpt-oss-20b | gpt-oss-120b | 26 s | 79% | 10% | 10% |
+| **gpt-oss-120b** | **gpt-oss-120b** | 128 s | **91%** | 7% | **2%** |
+
+The flagged claims showed where the errors came from. With the small model writing chunk notes, worked-example steps were wrong (hypothesis updates for the wrong instance); with the large model everywhere, every Find-S step was correct, and the remaining flags were minor paraphrases. A 10-point gap is far beyond run-to-run noise, so the large model is the hosted default for both steps. It's slower only because both steps then share one model's 8k tokens/min quota.
+
+Two planned comparisons (small model everywhere; large model with `reasoning_effort=medium`) couldn't run: the day's evaluation runs had used `gpt-oss-120b`'s **200k tokens/day** allowance (Groq's error names the TPD limit). That cap is the real production constraint, about 8–10 new detailed summaries per day per model, and it's why caching and a fallback provider matter more than raw speed. The evaluation also now excludes the "Solution not given in slides" placeholders the prompts ask for, which the judge had been counting as unsupported.
