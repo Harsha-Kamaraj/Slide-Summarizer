@@ -1,5 +1,7 @@
 """API behaviour with the model replaced by a fake, so tests run in seconds."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,12 +23,12 @@ An overview.
 def fake_summarizer(monkeypatch):
     calls = {}
 
-    def fake(deck, mode):
+    def fake(path, mode):
         calls["mode"] = mode
-        calls["slides"] = len(deck.slides)
+        calls["filename"] = Path(path).name
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_deck", fake)
+    monkeypatch.setattr(main, "summarize_file", fake)
     return calls
 
 
@@ -47,7 +49,7 @@ def test_summarize_returns_pdf_download(sample_pptx, fake_summarizer):
     assert response.headers["content-type"] == "application/pdf"
     assert 'filename="intro_summary.pdf"' in response.headers["content-disposition"]
     assert response.content.startswith(b"%PDF")
-    assert fake_summarizer == {"mode": "short", "slides": 3}
+    assert fake_summarizer == {"mode": "short", "filename": "intro.pptx"}
 
 
 def test_default_mode_is_detailed(sample_pdf, fake_summarizer):
@@ -74,7 +76,8 @@ def test_rejects_oversized_file(sample_pdf, fake_summarizer, monkeypatch):
     assert "limit" in response.json()["detail"]
 
 
-def test_corrupt_file_gives_clear_error(tmp_path, fake_summarizer):
+def test_corrupt_file_gives_clear_error(tmp_path):
+    # Real pipeline: extraction fails before any model call.
     path = tmp_path / "broken.pptx"
     path.write_bytes(b"not a pptx")
     response = upload(path)
@@ -84,39 +87,36 @@ def test_corrupt_file_gives_clear_error(tmp_path, fake_summarizer):
 
 
 def test_llm_down_gives_503_with_reason(sample_pdf, monkeypatch):
-    def fail(deck, mode):
+    def fail(path, mode):
         raise llm.LLMError("Can't reach the LLM server. Start it with 'ollama serve'.")
 
-    monkeypatch.setattr(main, "summarize_deck", fail)
+    monkeypatch.setattr(main, "summarize_file", fail)
     response = upload(sample_pdf)
     assert response.status_code == 503
     assert "ollama serve" in response.json()["detail"]
 
 
-def test_uploaded_file_is_not_kept(sample_pdf, fake_summarizer, monkeypatch):
+def test_uploaded_file_is_not_kept(sample_pdf, monkeypatch):
     seen = []
-    real_extract = main.extract_deck
 
-    def spy(path):
-        seen.append(path)
-        return real_extract(path)
+    def spy(path, mode):
+        seen.append(Path(path))
+        assert seen[0].exists()  # present while being summarized
+        return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "extract_deck", spy)
+    monkeypatch.setattr(main, "summarize_file", spy)
     upload(sample_pdf)
-
-    from pathlib import Path
-
-    assert seen and not Path(seen[0]).exists()  # temp file deleted after the request
+    assert seen and not seen[0].exists()  # deleted after the request
 
 
 def test_same_file_is_served_from_cache(sample_pdf, monkeypatch):
     calls = []
 
-    def fake(deck, mode):
+    def fake(path, mode):
         calls.append(mode)
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_deck", fake)
+    monkeypatch.setattr(main, "summarize_file", fake)
 
     first = upload(sample_pdf)
     second = upload(sample_pdf)
@@ -153,12 +153,12 @@ def test_cached_pdf_shows_each_students_filename(sample_pdf, tmp_path, fake_summ
 
 
 def test_failed_summaries_are_not_cached(sample_pdf, monkeypatch):
-    def fail(deck, mode):
+    def fail(path, mode):
         raise llm.LLMError("model down")
 
-    monkeypatch.setattr(main, "summarize_deck", fail)
+    monkeypatch.setattr(main, "summarize_file", fail)
     assert upload(sample_pdf).status_code == 503
-    monkeypatch.setattr(main, "summarize_deck", lambda deck, mode: FAKE_SUMMARY)
+    monkeypatch.setattr(main, "summarize_file", lambda path, mode: FAKE_SUMMARY)
     assert upload(sample_pdf).headers["x-cache"] == "MISS"
 
 
@@ -170,12 +170,12 @@ def test_simultaneous_requests_for_same_deck_summarize_once(sample_pdf, monkeypa
 
     calls = []
 
-    def slow_fake(deck, mode):
+    def slow_fake(path, mode):
         calls.append(mode)
         time.sleep(0.3)
         return FAKE_SUMMARY
 
-    monkeypatch.setattr(main, "summarize_deck", slow_fake)
+    monkeypatch.setattr(main, "summarize_file", slow_fake)
     results = []
     threads = [
         threading.Thread(target=lambda: results.append(upload(sample_pdf))) for _ in range(2)

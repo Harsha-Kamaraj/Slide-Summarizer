@@ -35,7 +35,14 @@ def cache_key(content_hash: str, mode: str) -> str:
     models), so editing a prompt or switching models never serves a stale
     summary written under the old setup.
     """
-    parts = [content_hash, mode, PIPELINE_VERSION, config.NOTES_MODEL, config.TEXT_MODEL]
+    parts = [
+        content_hash,
+        mode,
+        PIPELINE_VERSION,
+        config.NOTES_MODEL,
+        config.TEXT_MODEL,
+        f"vision={config.VISION_ENABLED}:{config.VISION_MODEL}",
+    ]
     for prompt in sorted(PROMPTS_DIR.glob("*.txt")):
         parts.append(hashlib.sha256(prompt.read_bytes()).hexdigest())
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()

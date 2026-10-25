@@ -14,6 +14,7 @@ from string import Template
 from backend import config, llm
 from backend.pdf_builder import build_pdf, parse_summary
 from backend.extract import Deck, ExtractionError, Slide, extract_deck
+from backend.vision import describe_image_slides
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,15 @@ NOTES_INSTRUCTIONS = {
 
 def load_prompt(name: str) -> Template:
     return Template((PROMPTS_DIR / f"{name}.txt").read_text())
+
+
+def summarize_file(path: str | Path, mode: str = "detailed") -> str:
+    """The whole pipeline for one file: extract text, describe image-heavy
+    slides with the vision model, then summarize. Used by the CLI and the API."""
+    deck = extract_deck(path)
+    if config.VISION_ENABLED:
+        describe_image_slides(deck, path)
+    return summarize_deck(deck, mode=mode)
 
 
 def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
@@ -184,8 +194,7 @@ def main(argv: list[str] | None = None) -> int:
 
     start = time.perf_counter()
     try:
-        deck = extract_deck(args.path)
-        summary = summarize_deck(deck, mode=args.mode)
+        summary = summarize_file(args.path, mode=args.mode)
     except (ExtractionError, llm.LLMError) as exc:
         logger.error("Error: %s", exc)
         return 1
@@ -193,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     print(summary)
     Path(args.output).write_bytes(build_pdf(parse_summary(summary), Path(args.path).name))
     logger.info("Wrote %s", args.output)
-    logger.info("Done: %d slides in %.1fs", len(deck.slides), time.perf_counter() - start)
+    logger.info("Done in %.1fs", time.perf_counter() - start)
     return 0
 
 

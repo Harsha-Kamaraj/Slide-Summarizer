@@ -14,7 +14,12 @@ TEXT_MODEL: str = os.getenv("TEXT_MODEL", "gemma4:12b")
 # Model for the map step (chunk notes). Defaults to TEXT_MODEL; can be set to a
 # smaller/faster model, since extracting notes is easier than the final merge.
 NOTES_MODEL: str = os.getenv("NOTES_MODEL", TEXT_MODEL)
-VISION_MODEL: str = os.getenv("VISION_MODEL", "gemma4:12b")  # revisited in Stage 5
+VISION_MODEL: str = os.getenv("VISION_MODEL", "gemma4:12b")  # must support image input
+# Describe image-heavy slides with the vision model (Stage 5). Set to 0 to skip
+# it, e.g. with a hosted text-only model or to save time.
+VISION_ENABLED: bool = os.getenv("VISION_ENABLED", "1") == "1"
+# Upper bound on vision calls per deck, so an all-image deck can't take forever.
+MAX_VISION_SLIDES: int = int(os.getenv("MAX_VISION_SLIDES", "20"))
 LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
 # "none" turns off Gemma 4's thinking mode, which roughly doubles latency.
 # Set to "" to omit the field for providers that don't support it.

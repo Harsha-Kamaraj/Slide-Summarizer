@@ -15,9 +15,9 @@ from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from backend import cache, config, llm
-from backend.extract import ExtractionError, extract_deck
+from backend.extract import ExtractionError
 from backend.pdf_builder import build_pdf, parse_summary
-from backend.summarize import summarize_deck
+from backend.summarize import summarize_file
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -102,8 +102,7 @@ def summarize(
 
 def _summarize_file(path: Path, mode: str) -> str:
     try:
-        deck = extract_deck(path)
-        return summarize_deck(deck, mode=mode)
+        return summarize_file(path, mode=mode)
     except ExtractionError as exc:
         raise HTTPException(422, str(exc)) from exc
     except llm.LLMError as exc:
