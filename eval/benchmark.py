@@ -44,8 +44,8 @@ class TokenCounter:
         self._original = llm._post_with_retries
 
     def __enter__(self):
-        def counting(payload, model):
-            data = self._original(payload, model)
+        def counting(*args, **kwargs):
+            data = self._original(*args, **kwargs)
             usage = data.get("usage") or {}
             self.calls += 1
             self.prompt_tokens += usage.get("prompt_tokens", 0)

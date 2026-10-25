@@ -32,6 +32,16 @@ LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "2"))
 # API can do them in parallel; a laptop GPU gains little, so default to 1.
 LLM_PARALLEL_CALLS: int = int(os.getenv("LLM_PARALLEL_CALLS", "1"))
 
+# Optional fallback provider, used when the main one is rate-limited, down or
+# timing out (e.g. a second free tier). Leave FALLBACK_BASE_URL empty to disable.
+FALLBACK_BASE_URL: str = os.getenv("FALLBACK_BASE_URL", "")
+FALLBACK_API_KEY: str = os.getenv("FALLBACK_API_KEY", "")
+FALLBACK_MODEL: str = os.getenv("FALLBACK_MODEL", "")
+# Leave empty if the fallback can't read images: while the main provider is
+# unavailable, image slides are then skipped instead of described.
+FALLBACK_VISION_MODEL: str = os.getenv("FALLBACK_VISION_MODEL", "")
+FALLBACK_REASONING_EFFORT: str = os.getenv("FALLBACK_REASONING_EFFORT", "")
+
 # --- Summarization ---
 # Slides per map step. Small enough to fit the model's context window, large
 # enough that related slides are summarized together.
