@@ -58,3 +58,12 @@ Feedback after reading the first real summaries: they were too short to revise f
 
 ## 17. Explained bullets, and formulas on their own `Formula:` line in a box
 Feedback on detailed mode: keep bullet points, but each bullet should *explain* (1–3 full sentences: what it means, why it matters, the lecture's example), not just name the idea. Formulas should stand out. The model writes every formula on its own line starting with `Formula:`. This is a plain-text marker small models follow reliably, unlike LaTeX, which we banned (decision 9), or a custom syntax. The PDF builder draws those lines as shaded, bordered boxes and turns plain-text math into real superscripts and subscripts (`2^(2^d)`, `x_i`). It handles the innermost brackets first, so nested powers display correctly. Superscript conversion runs only inside formula boxes. In normal sentences an underscore or caret might not be math, so it's left alone there.
+
+## 18. Benchmark: keep 12B for everything locally; real speed needs a hosted API
+`eval/benchmark.py` compared four local setups on the 35-slide deck in detailed mode (results in `eval/benchmark_results.md`):
+- **12B everywhere:** 527 s, 2,260 words, 14 topics.
+- **12B with 2 parallel chunk calls:** 496 s, only 6% faster. Output stayed at about 12 tokens/s, which shows the Mac is limited by memory speed: parallel requests share the same GPU and the same weight reads. Parallel calls stay in the code (`LLM_PARALLEL_CALLS`) because hosted APIs serve requests independently, and there the map step would take about as long as one call.
+- **gemma3:4b notes + 12B merge:** 348 s, 34% faster but about half the words. It skipped the intermediate steps of the worked example, which is exactly the detail students asked for.
+- **llama3.1:8b notes + 12B merge:** 398 s, the worst quality (7 topics, 1 formula, practice problems dropped).
+
+So 12B stays the default, and `NOTES_MODEL=gemma3:4b` is a quick-iteration option. A deck uses about 16.5k tokens (10k in, 6k out), which sets how many new decks a free hosted tier can handle per day. The benchmark also found a faithfulness error in the 12B output: a worked-example step named the wrong attribute and gave a reason the slides don't state. That makes the Stage 6 "is every bullet supported by the slides?" check essential, not optional.
