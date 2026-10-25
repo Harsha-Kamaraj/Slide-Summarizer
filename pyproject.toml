@@ -1,0 +1,7 @@
+[tool.black]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# PyMuPDF's SWIG bindings emit noisy import-time deprecation warnings.
+filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]

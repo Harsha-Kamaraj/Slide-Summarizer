@@ -1,0 +1,194 @@
+"""Turn a lecture file (.pptx, .ppt or .pdf) into plain text, one entry per slide."""
+
+import logging
+import shutil
+import subprocess
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pymupdf
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.exc import PackageNotFoundError
+
+from backend import config
+
+logger = logging.getLogger(__name__)
+
+
+class ExtractionError(Exception):
+    """A file could not be read. The message is safe to show to a student."""
+
+
+@dataclass
+class Slide:
+    number: int  # 1-based, matches what students see in the deck
+    title: str
+    text: str
+    notes: str = ""
+
+    @property
+    def word_count(self) -> int:
+        return len(f"{self.title} {self.text}".split())
+
+    @property
+    def is_image_heavy(self) -> bool:
+        # Little text usually means a diagram or screenshot. These go to the
+        # vision model in Stage 5; text-only summarization would miss them.
+        return self.word_count < config.IMAGE_HEAVY_WORD_THRESHOLD
+
+
+@dataclass
+class Deck:
+    title: str
+    slides: list[Slide] = field(default_factory=list)
+
+
+def extract_deck(path: str | Path) -> Deck:
+    """Read any supported file type and return its slides."""
+    path = Path(path)
+    if not path.is_file():
+        raise ExtractionError(f"File not found: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix not in config.ALLOWED_EXTENSIONS:
+        allowed = ", ".join(config.ALLOWED_EXTENSIONS)
+        raise ExtractionError(f"Unsupported file type '{suffix}'. Allowed: {allowed}")
+
+    if suffix == ".pptx":
+        deck = _extract_pptx(path)
+    elif suffix == ".ppt":
+        deck = _extract_ppt(path)
+    else:
+        deck = _extract_pdf(path)
+
+    if len(deck.slides) > config.MAX_SLIDES:
+        raise ExtractionError(
+            f"Deck has {len(deck.slides)} slides; the limit is {config.MAX_SLIDES}."
+        )
+    logger.info("Extracted %d slides from %s", len(deck.slides), path.name)
+    return deck
+
+
+# --- .pptx ---------------------------------------------------------------
+
+
+def _extract_pptx(path: Path) -> Deck:
+    try:
+        prs = Presentation(str(path))
+    except (PackageNotFoundError, KeyError, ValueError) as exc:
+        raise ExtractionError(f"Could not open '{path.name}': it may be corrupt.") from exc
+
+    slides = []
+    for number, slide in enumerate(prs.slides, start=1):
+        title_shape = slide.shapes.title
+        title = title_shape.text_frame.text.strip() if title_shape is not None else ""
+        # Skip the title shape in the body so the title isn't repeated.
+        # Compare shape_id, not identity: python-pptx builds a new proxy
+        # object on every access, so `is` never matches.
+        title_id = title_shape.shape_id if title_shape is not None else None
+        body_shapes = [s for s in slide.shapes if s.shape_id != title_id]
+        text = "\n".join(_shape_texts(body_shapes))
+
+        notes = ""
+        if slide.has_notes_slide:
+            notes = slide.notes_slide.notes_text_frame.text.strip()
+
+        slides.append(Slide(number=number, title=title, text=text, notes=notes))
+
+    return Deck(title=_pick_title(prs.core_properties.title, slides, path.stem), slides=slides)
+
+
+def _shape_texts(shapes) -> list[str]:
+    """Collect text from text boxes, tables and grouped shapes, in slide order."""
+    texts = []
+    for shape in shapes:
+        # Grouped shapes hide their text one level down, so recurse.
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            texts.extend(_shape_texts(shape.shapes))
+        elif shape.has_text_frame:
+            text = shape.text_frame.text.strip()
+            if text:
+                texts.append(text)
+        elif shape.has_table:
+            # One line per row, cells separated by " | ", so the model can
+            # still tell columns apart.
+            for row in shape.table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                if any(cells):
+                    texts.append(" | ".join(cells))
+    return texts
+
+
+def _first_title(slides: list[Slide]) -> str:
+    return next((s.title for s in slides if s.title), "")
+
+
+# PowerPoint fills in placeholder metadata titles that are useless to students.
+_GENERIC_TITLES = {"powerpoint presentation", "presentation", "slide 1", "untitled"}
+
+
+def _pick_title(metadata_title: str | None, slides: list[Slide], fallback: str) -> str:
+    title = (metadata_title or "").strip()
+    if title.lower() in _GENERIC_TITLES:
+        title = ""
+    return title or _first_title(slides) or fallback
+
+
+# --- .ppt (legacy binary format) -----------------------------------------
+
+
+def _extract_ppt(path: Path) -> Deck:
+    # python-pptx can't read the old binary .ppt format, so let LibreOffice
+    # convert it to .pptx first and reuse the .pptx path.
+    soffice = shutil.which("soffice")
+    if soffice is None:
+        raise ExtractionError(
+            "Reading .ppt files needs LibreOffice. Install it with "
+            "'brew install --cask libreoffice', or save the file as .pptx/.pdf."
+        )
+
+    with tempfile.TemporaryDirectory() as out_dir:
+        try:
+            subprocess.run(
+                [soffice, "--headless", "--convert-to", "pptx", "--outdir", out_dir, str(path)],
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise ExtractionError(f"Could not convert '{path.name}' from .ppt.") from exc
+
+        converted = Path(out_dir) / f"{path.stem}.pptx"
+        if not converted.exists():
+            raise ExtractionError(f"Could not convert '{path.name}': it may be corrupt.")
+        deck = _extract_pptx(converted)
+
+    # The converted file lives in a temp dir, so fall back to the real name.
+    if deck.title == converted.stem:
+        deck.title = path.stem
+    return deck
+
+
+# --- .pdf ----------------------------------------------------------------
+
+
+def _extract_pdf(path: Path) -> Deck:
+    try:
+        doc = pymupdf.open(path)
+    except (pymupdf.FileDataError, RuntimeError) as exc:
+        raise ExtractionError(f"Could not open '{path.name}': it may be corrupt.") from exc
+
+    slides = []
+    with doc:
+        for number, page in enumerate(doc, start=1):
+            lines = [line.strip() for line in page.get_text().splitlines() if line.strip()]
+            # PDFs have no "title" field per page; the first line of a slide
+            # export is almost always the slide heading.
+            title = lines[0] if lines else ""
+            text = "\n".join(lines[1:])
+            slides.append(Slide(number=number, title=title, text=text))
+        meta_title = (doc.metadata or {}).get("title", "")
+
+    return Deck(title=_pick_title(meta_title, slides, path.stem), slides=slides)
