@@ -104,3 +104,14 @@ Many students summarize the same lecture, so the backend caches finished summari
 - **Failures aren't cached**, so a model outage doesn't stick.
 - The response has an `X-Cache: HIT|MISS` header, and the extension shows "⚡ (cached)".
 - **Not yet:** cache expiry and size limits, and a shared cache across server instances (one folder on one server is enough until Stage 8 hosting).
+
+## 24. Vision turns image slides into text *before* summarizing
+About 12 of the 58 slides in the intro ML deck are mostly pictures: a quote inside a photo, a flow chart, algorithm diagrams. Their content never reached the text summarizer. Stage 5 adds one step before map-reduce:
+1. **Pick** slides with fewer than 15 words (`Slide.is_image_heavy`). Only these go to the vision model, because a vision call takes about 13 s locally and most slides don't need one. There's a cap (`MAX_VISION_SLIDES`, 20) so an all-image deck stays bounded.
+2. **Render** just those slides at about 1024 px wide (`render.py`). That's enough to read small slide text without making the images, and the tokens they cost, too large. PDFs render directly with PyMuPDF; PowerPoint goes through LibreOffice → PDF first.
+3. **Describe** each image with the vision model (`vision.py`). The prompt asks for text transcribed word for word, diagrams explained as parts → connections → order, and tables as rows. It forbids describing people or adding outside knowledge, because an early test invented "speaking at a podium" for a portrait. Slides with no teaching content (logos, "thank you", quiz links) answer `NO_CONTENT` and are skipped.
+4. The description is **appended to the slide's text** as `[From the slide image] …`, and the rest of the pipeline runs unchanged.
+
+Why convert images to text rather than send images to the summarizer: the map-reduce prompts, structure check, cache and PDF builder all keep working as they are. Each image is looked at once, in a focused call, instead of being repeated in long summarization prompts, and the text-only path still works with models that can't see images (`VISION_ENABLED=0`). The default vision model is the same `gemma4:12b` as the text model (it reports `vision` capability), so only one model is loaded in memory. The cache key includes the vision settings, and the vision prompt is hashed with the other prompts. `summarize_file()` is now the single pipeline entry point shared by the CLI and the API.
+
+A failed vision call on one slide is logged and skipped rather than failing the whole summary; if the model is down entirely, the text step reports it.
