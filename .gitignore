@@ -16,3 +16,6 @@ eval/sample_decks/
 # Generated output
 summary.pdf
 *.summary.pdf
+
+# Generated summaries contain lecture content too
+eval/summaries/
