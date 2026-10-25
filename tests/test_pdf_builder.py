@@ -67,3 +67,19 @@ def test_short_leading_labels_are_bolded():
     # A long sentence that happens to contain a colon is left alone.
     long = "The algorithm in this lecture works as follows: start specific"
     assert _bold_label(long) == long
+
+
+def test_topic_explanation_and_numbered_steps():
+    s = parse_summary(
+        "# T\n## Key Points\n### Find-S\nFind-S finds the most specific hypothesis.\n"
+        "It ignores negatives.\n1. Initialise h\n2. Generalise on positives\n- Fast\n"
+    )
+    topic = s.topics[0]
+    assert topic.explanation == "Find-S finds the most specific hypothesis. It ignores negatives."
+    assert topic.points == ["1. Initialise h", "2. Generalise on positives", "Fast"]
+
+    pdf = build_pdf(s)
+    with pymupdf.open(stream=pdf, filetype="pdf") as doc:
+        text = doc[0].get_text()
+    assert "It ignores negatives." in text
+    assert "1." in text and "Initialise h" in text

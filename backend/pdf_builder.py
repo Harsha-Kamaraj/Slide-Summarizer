@@ -21,8 +21,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     KeepTogether,
-    ListFlowable,
-    ListItem,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -38,6 +36,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Topic:
     heading: str
+    explanation: str = ""  # optional paragraph before the points
+    # Bullets are stored without their marker; numbered steps keep "1. ".
     points: list[str] = field(default_factory=list)
 
 
@@ -71,15 +71,24 @@ def parse_summary(markdown: str) -> Summary:
             summary.topics.append(Topic(heading=_strip_bold(line[4:])))
         elif section == "overview":
             overview_lines.append(line)
-        elif section == "key points" and _is_bullet(line):
-            if not summary.topics:  # bullets before any ### heading
+        elif section == "key points":
+            if not summary.topics:  # content before any ### heading
                 summary.topics.append(Topic(heading="Key points"))
-            summary.topics[-1].points.append(_bullet_text(line))
+            topic = summary.topics[-1]
+            if _is_bullet(line):
+                topic.points.append(_bullet_text(line))
+            elif _NUMBERED.match(line):
+                topic.points.append(line)
+            else:  # a plain line is part of the topic's explanation paragraph
+                topic.explanation = f"{topic.explanation} {line}".strip()
         elif section == "important terms" and _is_bullet(line):
             summary.terms.append(_split_term(_bullet_text(line)))
 
     summary.overview = " ".join(overview_lines)
     return summary
+
+
+_NUMBERED = re.compile(r"(\d+)\.\s+(.*)")
 
 
 def _is_bullet(line: str) -> bool:
@@ -130,18 +139,14 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
     if summary.topics:
         story.append(Paragraph("Key Points", styles["h2"]))
         for topic in summary.topics:
-            bullets = ListFlowable(
-                [
-                    ListItem(Paragraph(_bold_label(_inline(p)), styles["body"]))
-                    for p in topic.points
-                ],
-                bulletType="bullet",
-                start="•",
-                leftIndent=5 * mm,
-                bulletFontName=regular,
-            )
-            # Keep a topic heading on the same page as its first bullets.
-            story.append(KeepTogether([Paragraph(_inline(topic.heading), styles["h3"]), bullets]))
+            head = [Paragraph(_inline(topic.heading), styles["h3"])]
+            if topic.explanation:
+                head.append(Paragraph(_inline(topic.explanation), styles["explanation"]))
+            points = [_point(p, styles["point"]) for p in topic.points]
+            # Keep a topic heading on the same page as its explanation and
+            # first point, so a heading never sits alone at a page bottom.
+            story.append(KeepTogether(head + points[:1]))
+            story += points[1:]
 
     if summary.terms:
         story.append(Paragraph("Important Terms", styles["h2"]))
@@ -182,6 +187,16 @@ def _inline(text: str) -> str:
     then turn **bold** back into real bold."""
     escaped = html.escape(text, quote=False)
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
+
+
+def _point(text: str, style: ParagraphStyle) -> Paragraph:
+    """A bullet ("•") or numbered step ("1.") as an indented paragraph."""
+    numbered = _NUMBERED.match(text)
+    if numbered:
+        return Paragraph(
+            _bold_label(_inline(numbered.group(2))), style, bulletText=f"{numbered.group(1)}."
+        )
+    return Paragraph(_bold_label(_inline(text)), style, bulletText="•")
 
 
 def _bold_label(text: str) -> str:
@@ -236,6 +251,24 @@ def _styles(regular: str, bold: str) -> dict[str, ParagraphStyle]:
         ),
         "body": ParagraphStyle(
             "body", parent=base["Normal"], fontName=regular, fontSize=10, leading=14
+        ),
+        "explanation": ParagraphStyle(
+            "explanation",
+            parent=base["Normal"],
+            fontName=regular,
+            fontSize=10,
+            leading=14,
+            spaceAfter=4,
+        ),
+        "point": ParagraphStyle(
+            "point",
+            parent=base["Normal"],
+            fontName=regular,
+            fontSize=10,
+            leading=14,
+            leftIndent=7 * mm,
+            bulletIndent=1.5 * mm,
+            spaceAfter=2,
         ),
         "term": ParagraphStyle(
             "term", parent=base["Normal"], fontName=bold, fontSize=10, leading=14

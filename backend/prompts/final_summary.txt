@@ -1,4 +1,4 @@
-Below are revision notes written section by section from a lecture deck labelled "$deck_title" (this may just be the course name). Merge them into one coherent summary document.
+Below are revision notes written section by section from a lecture deck labelled "$deck_title" (this may just be the course name). Merge them into one coherent summary document that a student could revise from without the slides.
 
 $length_instructions
 
@@ -12,7 +12,9 @@ Output ONE Markdown document in exactly this structure. Use the "# " title once 
 
 ## Key Points
 ### <Topic name>
+<A plain paragraph (no bullet) explaining the topic in simple words: what it is, why it matters, and how it connects to the previous topic. Use only information from the notes.>
 - <point>
+1. <step> (use a numbered list for algorithm steps or procedures)
 (repeat for each topic; merge duplicate topics across sections and order topics as they appear in the lecture)
 
 ## Important Terms

@@ -5,6 +5,7 @@ Write revision notes for these slides:
 - Under each heading, write bullet points ("- ") with the key ideas, definitions, formulas and steps.
 - If speaker notes add an explanation, include it.
 - Skip administrative content: author and instructor names, acknowledgements, quiz links, image sources (e.g. "Source - Google").
+- $detail_instructions
 - After the bullets, add a line "Terms:" followed by bullets of the form "- Term: one-line definition" for every technical term defined in these slides. Write "Terms: none" if there are none.
 
 Slides:

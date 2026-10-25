@@ -18,9 +18,29 @@ logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
+# How much the final merge should keep, per mode.
 LENGTH_INSTRUCTIONS = {
-    "short": "Keep it short: at most 4 topics with 3-4 bullets each, and at most 8 terms (the most important ones).",
-    "detailed": "Be thorough: keep every distinct idea, definition, formula and step from the notes.",
+    "short": (
+        "Keep it short for quick revision: at most 4 topics, each with a one-sentence "
+        "explanation and 3-4 bullets, and at most 8 terms."
+    ),
+    "detailed": (
+        "Be thorough: this replaces reading the slides. Give every topic a 3-5 sentence "
+        "explanation paragraph, then bullets covering every distinct idea, definition, formula "
+        "and algorithm step in the notes. Write each worked example or practice problem as its "
+        "own topic (e.g. '### Worked Example: ...') with the problem, the steps and the final "
+        "answer. Include limitations and comparisons the notes mention. Up to 15 terms."
+    ),
+}
+
+# How much detail the map step should keep. The merge can't add detail the
+# notes dropped (without inventing it), so detailed mode needs richer notes.
+NOTES_INSTRUCTIONS = {
+    "short": "Keep the notes concise: main ideas and definitions only.",
+    "detailed": (
+        "Be complete: keep every explanation, definition, formula, algorithm step, "
+        "and worked example (with its steps and final answer) that appears in the slides."
+    ),
 }
 
 
@@ -28,7 +48,7 @@ def load_prompt(name: str) -> Template:
     return Template((PROMPTS_DIR / f"{name}.txt").read_text())
 
 
-def summarize_deck(deck: Deck, mode: str = "short") -> str:
+def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
     """Return a Markdown summary of the deck."""
     if mode not in LENGTH_INSTRUCTIONS:
         raise ValueError(f"mode must be one of {list(LENGTH_INSTRUCTIONS)}")
@@ -62,6 +82,7 @@ def summarize_deck(deck: Deck, mode: str = "short") -> str:
             first=chunk[0].number,
             last=chunk[-1].number,
             deck_title=deck.title,
+            detail_instructions=NOTES_INSTRUCTIONS[mode],
             slides=format_slides(chunk),
         )
         notes.append(_ask(system, prompt))
@@ -137,7 +158,7 @@ def _ask(system: str, prompt: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Summarize a lecture deck.")
     parser.add_argument("path", help="a .pptx, .ppt or .pdf file")
-    parser.add_argument("--mode", choices=list(LENGTH_INSTRUCTIONS), default="short")
+    parser.add_argument("--mode", choices=list(LENGTH_INSTRUCTIONS), default="detailed")
     parser.add_argument("-o", "--output", default="summary.pdf", help="where to write the PDF")
     args = parser.parse_args(argv)
 

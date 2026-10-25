@@ -39,9 +39,12 @@ def test_one_map_call_per_chunk_then_one_merge(fake_llm, monkeypatch):
     assert "fact 1" not in fake_llm[3]
 
 
-def test_mode_changes_length_instructions(fake_llm):
-    summarize.summarize_deck(make_deck(2), mode="detailed")
-    assert summarize.LENGTH_INSTRUCTIONS["detailed"] in fake_llm[-1]
+def test_mode_reaches_both_map_and_reduce_prompts(fake_llm):
+    # The map step must know the mode too: the merge can't add detail the
+    # chunk notes already dropped.
+    summarize.summarize_deck(make_deck(2), mode="short")
+    assert summarize.NOTES_INSTRUCTIONS["short"] in fake_llm[0]
+    assert summarize.LENGTH_INSTRUCTIONS["short"] in fake_llm[-1]
 
 
 def test_skips_empty_slides_and_fails_if_nothing_left(fake_llm):
