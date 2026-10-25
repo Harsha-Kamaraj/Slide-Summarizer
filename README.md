@@ -45,3 +45,11 @@ curl -F file=@path/to/deck.pdf -F mode=detailed localhost:8000/summarize -o summ
 | File too large (`MAX_UPLOAD_MB`) | 413 |
 | Corrupt / unreadable file | 422 |
 | LLM server down or model missing | 503 |
+
+## Chrome extension (Stage 4)
+1. Start the backend (see above) and make sure Ollama is running.
+2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select the `extension/` folder.
+3. Open a course on PESU Academy → a unit → **Slides**. Each deck gets a **📝 Summarize** button; the summary PDF is saved to your Downloads.
+4. The toolbar popup shows backend status, lets you choose **Detailed/Short**, and can summarize a file from your computer.
+
+After changing extension code, click the ↻ reload icon on the extension's card in `chrome://extensions` and refresh the PESU tab.
