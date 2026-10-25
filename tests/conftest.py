@@ -8,6 +8,15 @@ import pytest
 from pptx import Presentation
 from pptx.util import Inches
 
+from backend import config
+
+
+@pytest.fixture(autouse=True)
+def isolated_cache(tmp_path, monkeypatch):
+    """Each test gets an empty summary cache, so tests can't affect each
+    other (or the real cache) through cached results."""
+    monkeypatch.setattr(config, "CACHE_DIR", str(tmp_path / "cache"))
+
 
 @pytest.fixture
 def sample_pptx(tmp_path: Path) -> Path:

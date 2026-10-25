@@ -3,6 +3,7 @@
 Run from the repo root:  .venv/bin/uvicorn backend.main:app --reload --port 8000
 """
 
+import hashlib
 import logging
 import tempfile
 import time
@@ -13,7 +14,7 @@ import httpx
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from backend import config, llm
+from backend import cache, config, llm
 from backend.extract import ExtractionError, extract_deck
 from backend.pdf_builder import build_pdf, parse_summary
 from backend.summarize import summarize_deck
@@ -70,39 +71,58 @@ def summarize(
     with tempfile.TemporaryDirectory() as tmp_dir:
         saved = Path(tmp_dir) / filename
         with saved.open("wb") as destination:
-            _save_upload(file, destination)
-        try:
-            deck = extract_deck(saved)
-            markdown = summarize_deck(deck, mode=mode)
-        except ExtractionError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        except llm.LLMError as exc:
-            logger.error("LLM failure for %s: %s", filename, exc)
-            raise HTTPException(503, f"The summarizer is unavailable right now: {exc}") from exc
+            content_hash = _save_upload(file, destination)
+
+        key = cache.cache_key(content_hash, mode)
+        with cache.lock(key):
+            markdown = cache.get(key)
+            cache_status = "HIT" if markdown else "MISS"
+            if markdown is None:
+                markdown = _summarize_file(saved, mode)
+                cache.put(key, markdown)
 
     pdf = build_pdf(parse_summary(markdown), source_name=filename)
     logger.info(
-        "Summarized %s (%d slides, mode=%s) in %.1fs",
+        "Summarized %s (mode=%s, cache %s) in %.1fs",
         filename,
-        len(deck.slides),
         mode,
+        cache_status,
         time.perf_counter() - start,
     )
     download_name = f"{Path(filename).stem}_summary.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_name}"',
+            "X-Cache": cache_status,
+        },
     )
 
 
-def _save_upload(upload: UploadFile, destination) -> None:
+def _summarize_file(path: Path, mode: str) -> str:
+    try:
+        deck = extract_deck(path)
+        return summarize_deck(deck, mode=mode)
+    except ExtractionError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except llm.LLMError as exc:
+        logger.error("LLM failure for %s: %s", path.name, exc)
+        raise HTTPException(503, f"The summarizer is unavailable right now: {exc}") from exc
+
+
+def _save_upload(upload: UploadFile, destination) -> str:
+    """Write the upload to disk and return its SHA-256 (the cache fingerprint),
+    computed on the way through so the file is only read once."""
     limit = config.MAX_UPLOAD_MB * 1024 * 1024
     size = 0
+    digest = hashlib.sha256()
     while piece := upload.file.read(_READ_CHUNK):
         size += len(piece)
         if size > limit:
             raise HTTPException(413, f"File is larger than the {config.MAX_UPLOAD_MB} MB limit.")
         destination.write(piece)
+        digest.update(piece)
     if size == 0:
         raise HTTPException(400, "The uploaded file is empty.")
+    return digest.hexdigest()

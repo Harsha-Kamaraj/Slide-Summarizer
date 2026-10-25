@@ -2,6 +2,7 @@
 code runs against local Ollama in development and a hosted API in production."""
 
 import os
+from pathlib import Path
 
 # --- LLM provider (OpenAI-compatible Chat Completions API) ---
 # Ollama serves the OpenAI-compatible API under /v1. For a hosted provider,
@@ -48,3 +49,7 @@ FONT_DIRS: list[str] = [
     ]
     if d
 ]
+
+# --- Cache ---
+# Finished summaries (Markdown) keyed by file hash + mode + prompt/model version.
+CACHE_DIR: str = os.getenv("CACHE_DIR", str(Path(__file__).parent.parent / ".cache" / "summaries"))

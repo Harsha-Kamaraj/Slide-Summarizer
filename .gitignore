@@ -22,3 +22,6 @@ eval/summaries/
 
 # Saved college pages contain personal info (name, photo, session data)
 eval/sample_pages/
+
+# Cached summaries (may contain lecture content)
+.cache/
