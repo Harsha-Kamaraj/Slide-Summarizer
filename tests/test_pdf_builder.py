@@ -18,6 +18,7 @@ It introduces Find-S.
 ## Important Terms
 - **Version Space**: hypotheses consistent with the data.
 - Feature Space (χ): all attribute combinations.
+- **Concept:** what belongs to a category.
 """
 
 
@@ -35,6 +36,7 @@ def test_parse_terms_with_and_without_bold():
     assert terms == [
         ("Version Space", "hypotheses consistent with the data."),
         ("Feature Space (χ)", "all attribute combinations."),
+        ("Concept", "what belongs to a category."),
     ]
 
 

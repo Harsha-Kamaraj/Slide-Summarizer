@@ -10,15 +10,15 @@ python3.13 -m venv .venv
 ollama pull gemma4:12b        # default model; see backend/config.py
 ```
 
-## Usage (Stage 1: command line)
+## Usage (command line)
 Run from the repo root:
 
 ```bash
-.venv/bin/python -m backend.summarize path/to/deck.pptx                  # short summary
-.venv/bin/python -m backend.summarize path/to/deck.pdf --mode detailed > summary.md
+.venv/bin/python -m backend.summarize path/to/deck.pptx                   # writes summary.pdf
+.venv/bin/python -m backend.summarize path/to/deck.pdf --mode detailed -o notes.pdf
 ```
 
-Supports `.pptx`, `.ppt` and `.pdf`. Settings (model, chunk size, LLM URL) can be overridden with env vars; see `backend/config.py`.
+The Markdown summary is also printed to stdout. Supports `.pptx`, `.ppt` and `.pdf`. Settings (model, chunk size, LLM URL) can be overridden with env vars; see `backend/config.py`.
 
 ## Tests
 ```bash

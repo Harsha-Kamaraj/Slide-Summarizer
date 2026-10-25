@@ -98,7 +98,8 @@ def _split_term(text: str) -> tuple[str, str]:
     # Accept both "**Term**: definition" and "Term: definition".
     match = re.match(r"\*\*(.+?)\*\*\s*:?\s*(.*)", text)
     if match:
-        return match.group(1).strip(), match.group(2).strip()
+        # rstrip(":") handles "**Term:** definition" (colon inside the bold).
+        return match.group(1).strip().rstrip(":"), match.group(2).strip()
     term, sep, definition = text.partition(":")
     if sep:
         return term.strip(), definition.strip()
