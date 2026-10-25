@@ -72,7 +72,9 @@ summarizeButton.addEventListener("click", async () => {
     .catch((error) => ({ ok: false, error: error.message }));
 
   summarizeButton.disabled = false;
-  message.textContent = result?.ok ? "✅ Saved to Downloads." : `⚠️ ${result?.error || "Failed."}`;
+  message.textContent = result?.ok
+    ? `✅ Saved to Downloads${result.cached ? " (from cache)" : ""}.`
+    : `⚠️ ${result?.error || "Failed."}`;
 });
 
 function fileToBase64(file) {

@@ -45,7 +45,7 @@ async function summarize(button, id, title) {
 
   button.disabled = false;
   if (result?.ok) {
-    button.textContent = "✅ Saved to Downloads";
+    button.textContent = result.cached ? "⚡ Saved to Downloads (cached)" : "✅ Saved to Downloads";
   } else {
     button.textContent = "⚠️ Failed: click to retry";
     button.title = result?.error || "Unknown error";

@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!handler) return false;
 
   handler(message)
-    .then(() => sendResponse({ ok: true }))
+    .then((result) => sendResponse({ ok: true, ...result }))
     .catch((error) => {
       console.error("Summarize failed:", error);
       sendResponse({ ok: false, error: error.message });
@@ -35,14 +35,14 @@ async function summarizeFromUrl({ url, title }) {
     throw new Error("PESU didn't return a PDF. Are you still logged in? Try reloading the page.");
   }
   const blob = await response.blob();
-  await summarizeBlob(blob, `${title}.pdf`);
+  return summarizeBlob(blob, `${title}.pdf`);
 }
 
 async function summarizeFromFile({ name, dataBase64, mimeType }) {
   // Messages between extension pages can't carry binary data, so the popup
   // sends the file base64-encoded.
   const bytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
-  await summarizeBlob(new Blob([bytes], { type: mimeType }), name);
+  return summarizeBlob(new Blob([bytes], { type: mimeType }), name);
 }
 
 async function summarizeBlob(blob, filename) {
@@ -72,6 +72,8 @@ async function summarizeBlob(blob, filename) {
     const pdf = await response.blob();
     await downloadPdf(pdf, `${stem(filename)}_summary.pdf`);
     setBadge("✓", "#2e7d32");
+    // The backend says whether this deck had been summarized before.
+    return { cached: response.headers.get("X-Cache") === "HIT" };
   } catch (error) {
     setBadge("!", "#c62828");
     throw error;
