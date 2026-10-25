@@ -12,6 +12,10 @@ const SLIDE_LINK = 'a[onclick*="downloadslidecoursedoc/"]';
 const ID_PATTERN = /downloadslidecoursedoc\/([0-9a-f-]{36})/i;
 const MARK = "data-slide-summarizer"; // set on links that already have a button
 
+// Buttons waiting on a summary, by request id, so progress updates from the
+// background worker reach the right button.
+const pending = new Map();
+
 function addButtons() {
   for (const link of document.querySelectorAll(`${SLIDE_LINK}:not([${MARK}])`)) {
     const id = link.getAttribute("onclick").match(ID_PATTERN)?.[1];
@@ -35,23 +39,56 @@ function addButtons() {
 
 async function summarize(button, id, title) {
   const url = new URL(`/Academy/a/referenceMeterials/downloadslidecoursedoc/${id}`, location.origin);
+  const requestId = crypto.randomUUID();
   button.disabled = true;
-  button.textContent = "⏳ Summarizing… (a few minutes)";
+  button.textContent = "⏳ Uploading…";
   button.title = "";
+  // Re-summarizing: remove the previous run's feedback buttons.
+  const oldFeedback = button.nextElementSibling;
+  if (oldFeedback?.classList.contains("slide-summarizer-feedback")) oldFeedback.remove();
+  pending.set(requestId, button);
 
   const result = await chrome.runtime
-    .sendMessage({ type: "summarize-url", url: url.href, title })
+    .sendMessage({ type: "summarize-url", url: url.href, title, requestId })
     .catch((error) => ({ ok: false, error: error.message }));
+  pending.delete(requestId);
 
   button.disabled = false;
   if (result?.ok) {
     button.textContent = result.cached ? "⚡ Saved to Downloads (cached)" : "✅ Saved to Downloads";
+    if (result.summaryId) button.after(feedbackButtons(result.summaryId));
   } else {
     button.textContent = "⚠️ Failed: click to retry";
     button.title = result?.error || "Unknown error";
     alert(`Slide Summarizer: ${button.title}`);
   }
 }
+
+function feedbackButtons(summaryId) {
+  const box = document.createElement("span");
+  box.className = "slide-summarizer-feedback";
+  box.append("Helpful? ");
+  for (const [emoji, rating] of [["👍", "up"], ["👎", "down"]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = emoji;
+    button.title = rating === "up" ? "This summary was helpful" : "This summary wasn't helpful";
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      box.textContent = "Thanks!";
+      await chrome.runtime.sendMessage({ type: "feedback", summaryId, rating }).catch(() => {});
+    });
+    box.append(button);
+  }
+  return box;
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type !== "summarize-progress") return;
+  const button = pending.get(message.requestId);
+  if (button && message.text) button.textContent = `⏳ ${message.text}`;
+});
 
 // PESU is a single-page app: opening the Slides tab changes the page without
 // a reload, so watch for new content instead of scanning only once.

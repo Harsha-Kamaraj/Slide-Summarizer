@@ -42,11 +42,26 @@ for (const radio of document.querySelectorAll('input[name="mode"]')) {
   radio.addEventListener("change", () => chrome.storage.sync.set({ mode: radio.value }));
 }
 
-backendInput.addEventListener("change", async () => {
+document.getElementById("saveBackend").addEventListener("click", async () => {
   const backendUrl = backendInput.value.trim().replace(/\/+$/, "") || DEFAULT_BACKEND_URL;
   backendInput.value = backendUrl;
+  // A new server needs permission before the extension may contact it.
+  // Chrome only shows this prompt from a click, hence the Save button.
+  const granted = await chrome.permissions.request({ origins: [`${new URL(backendUrl).origin}/*`] });
+  if (!granted) {
+    statusBox.className = "status bad";
+    statusBox.textContent = "Permission denied: the extension can't contact that server.";
+    return;
+  }
   await chrome.storage.sync.set({ backendUrl });
   checkBackend(backendUrl);
+});
+
+// Progress for a file summarized from this popup (while it stays open).
+chrome.runtime.onMessage.addListener((update) => {
+  if (update.type === "summarize-progress" && update.requestId === "popup" && update.text) {
+    message.textContent = `⏳ ${update.text}`;
+  }
 });
 
 fileInput.addEventListener("change", () => {

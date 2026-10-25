@@ -19,3 +19,20 @@
   opacity: 0.75;
   cursor: progress;
 }
+
+/* 👍/👎 shown after a summary is saved. */
+.slide-summarizer-feedback {
+  margin-left: 8px;
+  font-size: 13px;
+  color: #555;
+  vertical-align: middle;
+}
+.slide-summarizer-feedback button {
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 14px;
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
