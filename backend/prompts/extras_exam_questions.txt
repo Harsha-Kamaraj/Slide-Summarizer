@@ -1,0 +1,16 @@
+Below is a revision summary of a lecture titled "$title". Write $count likely exam questions a lecturer could set from this material.
+
+- Mix the types: definitions and short-answer questions, "explain" or "compare" questions, and, if the summary has formulas, worked examples or algorithms, a numerical or "trace the algorithm" question.
+- Every question must be answerable from the summary alone.
+- Give each question a short model answer (1-3 sentences) taken only from the summary.
+
+Output only Markdown in exactly this format, with nothing before or after:
+
+## Likely Exam Questions
+1. <question>
+   Answer: <model answer>
+2. <question>
+   Answer: <model answer>
+
+Summary:
+$summary

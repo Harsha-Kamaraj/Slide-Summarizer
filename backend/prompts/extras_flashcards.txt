@@ -1,0 +1,14 @@
+Below is a revision summary of a lecture titled "$title". Write $count flashcards for quick revision.
+
+- One fact per card: a definition, a formula, a step, a comparison or a key property.
+- The front is a short question; the back is the answer in at most 20 words.
+- Use only information from the summary. Cover the whole lecture, not just the first topics.
+
+Output only Markdown in exactly this format, one card per line, with nothing before or after:
+
+## Flashcards
+- Q: <front> | A: <back>
+- Q: <front> | A: <back>
+
+Summary:
+$summary

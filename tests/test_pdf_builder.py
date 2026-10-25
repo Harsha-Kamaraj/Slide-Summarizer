@@ -111,3 +111,46 @@ def test_formula_markup_superscripts_and_subscripts():
     assert _formula_markup("h(x_i) - y_i") == "h(x<sub>i</sub>) - y<sub>i</sub>"
     assert _formula_markup("a < b") == "a &lt; b"
     assert _formula_markup("2 ^ (3 x 2)") == "2<super>3 x 2</super>"
+
+
+EXTRAS_MD = """# T
+## Overview
+x
+## Key Points
+### A
+- point
+## Important Terms
+- **X**: y
+
+## Likely Exam Questions
+1. **Define version space.**
+   Answer: The set of hypotheses consistent with the training data.
+2. Trace Find-S on the EnjoySport data.
+   - **Answer:** h becomes {sunny, warm, ?, strong, ?, same}.
+
+## Flashcards
+- Q: What does Find-S ignore? | A: Negative examples.
+- **Q:** Concept space size for d binary features? | **A:** 2^(2^d)
+- not a card
+"""
+
+
+def test_parse_exam_questions_and_flashcards():
+    s = parse_summary(EXTRAS_MD)
+    assert s.exam_questions == [
+        ("Define version space.", "The set of hypotheses consistent with the training data."),
+        ("Trace Find-S on the EnjoySport data.", "h becomes {sunny, warm, ?, strong, ?, same}."),
+    ]
+    assert s.flashcards == [
+        ("What does Find-S ignore?", "Negative examples."),
+        ("Concept space size for d binary features?", "2^(2^d)"),
+    ]
+
+
+def test_pdf_renders_extras():
+    pdf = build_pdf(parse_summary(EXTRAS_MD))
+    with pymupdf.open(stream=pdf, filetype="pdf") as doc:
+        text = "".join(page.get_text() for page in doc)
+    assert "Likely Exam Questions" in text and "Define version space." in text
+    assert "Answer: The set of hypotheses" in text
+    assert "Flashcards" in text and "Negative examples." in text

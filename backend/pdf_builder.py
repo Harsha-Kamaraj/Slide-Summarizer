@@ -48,6 +48,9 @@ class Summary:
     overview: str = ""
     topics: list[Topic] = field(default_factory=list)
     terms: list[tuple[str, str]] = field(default_factory=list)
+    # Optional extras (Stage 7)
+    exam_questions: list[tuple[str, str]] = field(default_factory=list)  # (question, answer)
+    flashcards: list[tuple[str, str]] = field(default_factory=list)  # (front, back)
 
 
 # --- 1. Parse ------------------------------------------------------------
@@ -89,12 +92,36 @@ def parse_summary(markdown: str) -> Summary:
                 topic.explanation = f"{topic.explanation} {line}".strip()
         elif section == "important terms" and _is_bullet(line):
             summary.terms.append(_split_term(_bullet_text(line)))
+        elif section == "likely exam questions":
+            _parse_exam_line(line, summary.exam_questions)
+        elif section == "flashcards":
+            card = _split_flashcard(_bullet_text(line) if _is_bullet(line) else line)
+            if card:
+                summary.flashcards.append(card)
 
     summary.overview = " ".join(overview_lines)
     return summary
 
 
 _NUMBERED = re.compile(r"(\d+)\.\s+(.*)")
+_ANSWER = re.compile(r"^(?:[-*]\s*)?\**answer\**\s*:\**\s*(.*)", re.IGNORECASE)
+
+
+def _parse_exam_line(line: str, questions: list[tuple[str, str]]) -> None:
+    """ "1. question" starts a question; "Answer: ..." fills in the last one."""
+    answer = _ANSWER.match(line)
+    if answer and questions:
+        question, _ = questions[-1]
+        questions[-1] = (question, answer.group(1).strip())
+    elif numbered := _NUMBERED.match(line):
+        questions.append((_strip_bold(numbered.group(2)), ""))
+
+
+def _split_flashcard(text: str) -> tuple[str, str] | None:
+    # "Q: front | A: back". Bold markers go first: models write both
+    # "**Q**:" and "**Q:**".
+    match = re.match(r"Q\s*:\s*(.+?)\s*\|\s*A\s*:\s*(.+)", _strip_bold(text), re.IGNORECASE)
+    return (match.group(1).strip(), match.group(2).strip()) if match else None
 
 
 def _is_bullet(line: str) -> bool:
@@ -172,6 +199,43 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
             )
         )
         story.append(table)
+
+    if summary.exam_questions:
+        story.append(Paragraph("Likely Exam Questions", styles["h2"]))
+        for number, (question, answer) in enumerate(summary.exam_questions, start=1):
+            block = [
+                Paragraph(f"<b>{_inline(question)}</b>", styles["point"], bulletText=f"{number}.")
+            ]
+            if answer:
+                block.append(Paragraph(f"Answer: {_inline(answer)}", styles["answer"]))
+            # Keep each question with its answer.
+            story.append(KeepTogether(block))
+
+    if summary.flashcards:
+        story.append(Paragraph("Flashcards", styles["h2"]))
+        rows = [
+            [
+                Paragraph("<b>Question</b>", styles["body"]),
+                Paragraph("<b>Answer</b>", styles["body"]),
+            ]
+        ]
+        rows += [
+            [Paragraph(_inline(front), styles["body"]), Paragraph(_inline(back), styles["body"])]
+            for front, back in summary.flashcards
+        ]
+        cards = Table(rows, colWidths=[85 * mm, None], repeatRows=1)
+        cards.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef4fb")),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.lightgrey),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(cards)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -318,6 +382,16 @@ def _styles(regular: str, bold: str) -> dict[str, ParagraphStyle]:
             fontSize=11.5,
             leading=17,
             alignment=TA_CENTER,
+        ),
+        "answer": ParagraphStyle(
+            "answer",
+            parent=base["Normal"],
+            fontName=regular,
+            fontSize=9.5,
+            leading=13,
+            leftIndent=7 * mm,
+            textColor=colors.HexColor("#444444"),
+            spaceAfter=6,
         ),
         "term": ParagraphStyle(
             "term", parent=base["Normal"], fontName=bold, fontSize=10, leading=14
