@@ -16,6 +16,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub.errors import EntryNotFoundError
+
 from backend import config, extras
 
 logger = logging.getLogger(__name__)
@@ -53,18 +56,66 @@ def cache_key(content_hash: str, mode: str, part: str = "summary") -> str:
 
 
 def get(key: str) -> str | None:
+    """Local disk first; then the shared remote store, if configured (a
+    remote hit is copied to disk so the next lookup is local)."""
     path = _path(key)
-    return path.read_text() if path.exists() else None
+    if path.exists():
+        return path.read_text()
+    summary = _remote_get(key)
+    if summary is not None:
+        _write_local(path, summary)
+    return summary
 
 
 def put(key: str, summary: str) -> None:
-    path = _path(key)
+    _write_local(_path(key), summary)
+    if config.CACHE_HF_REPO:
+        # Upload in the background: the student shouldn't wait for it.
+        threading.Thread(target=_remote_put, args=(key, summary), daemon=True).start()
+
+
+def _write_local(path: Path, summary: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write to a temp file and rename: a crash mid-write can't leave a
     # half-written summary that later requests would serve.
     tmp = path.with_suffix(".tmp")
     tmp.write_text(summary)
     tmp.replace(path)
+
+
+# --- Remote store: a private Hugging Face dataset ------------------------
+# Free hosts like Render wipe the disk whenever the service sleeps or
+# restarts, which would throw the cache away several times a day. A private
+# dataset repo is free, persistent storage. Remote failures are logged and
+# treated as a miss: the cache must never break summarizing.
+
+
+def _remote_get(key: str) -> str | None:
+    if not config.CACHE_HF_REPO:
+        return None
+    try:
+        file = hf_hub_download(
+            config.CACHE_HF_REPO, f"{key}.md", repo_type="dataset", token=config.HF_TOKEN or None
+        )
+        return Path(file).read_text()
+    except EntryNotFoundError:
+        return None
+    except Exception as exc:  # network trouble, auth, outage: just a miss
+        logger.warning("Remote cache read failed: %s", exc)
+        return None
+
+
+def _remote_put(key: str, summary: str) -> None:
+    try:
+        HfApi(token=config.HF_TOKEN or None).upload_file(
+            path_or_fileobj=summary.encode(),
+            path_in_repo=f"{key}.md",
+            repo_id=config.CACHE_HF_REPO,
+            repo_type="dataset",
+            commit_message="Cache summary",
+        )
+    except Exception as exc:
+        logger.warning("Remote cache write failed: %s", exc)
 
 
 # One lock per key. If two students click the same deck at once, the second

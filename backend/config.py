@@ -78,6 +78,11 @@ FONT_DIRS: list[str] = [
 # --- Cache ---
 # Finished summaries (Markdown) keyed by file hash + mode + prompt/model version.
 CACHE_DIR: str = os.getenv("CACHE_DIR", str(Path(__file__).parent.parent / ".cache" / "summaries"))
+# Optional persistent copy of the cache in a private Hugging Face dataset
+# ("user/name"), for hosts whose disk is wiped on restart. HF_TOKEN needs write
+# access to that dataset only (use a fine-grained token).
+CACHE_HF_REPO: str = os.getenv("CACHE_HF_REPO", "")
+HF_TOKEN: str = os.getenv("HF_TOKEN", "")
 
 # --- Serving many students (Stage 8) ---
 # Jobs processed at once; the rest wait in a queue. 1 suits a laptop running

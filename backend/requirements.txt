@@ -9,3 +9,5 @@ reportlab
 fastapi
 uvicorn[standard]
 python-multipart
+# Optional persistent cache in a Hugging Face dataset (Stage 8)
+huggingface_hub
