@@ -166,3 +166,22 @@ def test_exam_question_keeps_listed_data_lines():
     ]
     with pymupdf.open(stream=build_pdf(s), filetype="pdf") as doc:
         assert "Junior, Rural, No" in doc[0].get_text()
+
+
+def test_markdown_tables_become_real_tables_in_place():
+    s = parse_summary(
+        "# T\n## Key Points\n### Version Space\n- Before the table.\n"
+        "| Color | Shape | Edible? |\n|---|---|---|\n| Red | Round | Yes |\n| Green | Long | |\n"
+        "- After the table.\n"
+    )
+    points = s.topics[0].points
+    assert points == [
+        "Before the table.",
+        "Table: Color | Shape | Edible?\nRed | Round | Yes\nGreen | Long | ",
+        "After the table.",
+    ]
+    with pymupdf.open(stream=build_pdf(s), filetype="pdf") as doc:
+        page = doc[0]
+        text = page.get_text()
+        assert "| Red |" not in text  # not dumped as raw Markdown
+        assert page.find_tables().tables  # drawn as an actual grid

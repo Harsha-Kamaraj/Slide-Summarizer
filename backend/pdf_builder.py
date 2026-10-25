@@ -37,8 +37,9 @@ logger = logging.getLogger(__name__)
 class Topic:
     heading: str
     explanation: str = ""  # optional paragraph before the points
-    # Bullets are stored without their marker; numbered steps keep "1. " and
-    # formulas keep "Formula: ", so render time knows how to draw each one.
+    # Bullets are stored without their marker; numbered steps keep "1. ",
+    # formulas keep "Formula: " and tables are "Table: " + one row per line,
+    # so render time knows how to draw each one.
     points: list[str] = field(default_factory=list)
 
 
@@ -79,6 +80,9 @@ def parse_summary(markdown: str) -> Summary:
             if not summary.topics:  # content before any ### heading
                 summary.topics.append(Topic(heading="Key points"))
             topic = summary.topics[-1]
+            if line.startswith("|"):
+                _add_table_row(topic, line)
+                continue
             text = _bullet_text(line) if _is_bullet(line) else line
             # Models sometimes wrap formulas in backticks; the box is enough.
             unticked = text.strip("`").strip()
@@ -104,6 +108,22 @@ def parse_summary(markdown: str) -> Summary:
 
 
 _NUMBERED = re.compile(r"(\d+)\.\s+(.*)")
+_TABLE_SEPARATOR = re.compile(r":?-{2,}:?")
+
+
+def _add_table_row(topic: Topic, line: str) -> None:
+    """Collect a Markdown table ("| a | b |" lines) into one "Table:" item,
+    in its place among the bullets. Separator rows ("|---|") are skipped."""
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    if all(_TABLE_SEPARATOR.fullmatch(cell) for cell in cells if cell):
+        return
+    row = " | ".join(cells)
+    if topic.points and topic.points[-1].startswith("Table: "):
+        topic.points[-1] += "\n" + row
+    else:
+        topic.points.append("Table: " + row)
+
+
 _ANSWER = re.compile(r"^(?:[-*]\s*)?\**answer\**\s*:\**\s*(.*)", re.IGNORECASE)
 
 
@@ -274,9 +294,11 @@ def _inline(text: str) -> str:
 
 
 def _point(text: str, styles: dict[str, ParagraphStyle]):
-    """A bullet ("•"), numbered step ("1.") or boxed formula."""
+    """A bullet ("•"), numbered step ("1."), boxed formula or table."""
     if text.startswith("Formula: "):
         return _formula_box(text[len("Formula: ") :], styles["formula"])
+    if text.startswith("Table: "):
+        return _table(text[len("Table: ") :], styles["cell"])
     numbered = _NUMBERED.match(text)
     if numbered:
         return Paragraph(
@@ -285,6 +307,29 @@ def _point(text: str, styles: dict[str, ParagraphStyle]):
             bulletText=f"{numbered.group(1)}.",
         )
     return Paragraph(_bold_label(_inline(text)), styles["point"], bulletText="•")
+
+
+def _table(rows_text: str, style: ParagraphStyle) -> Table:
+    """A slide table as a real table: header row shaded, columns share the
+    page width."""
+    rows = [row.split(" | ") for row in rows_text.splitlines()]
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]  # ragged rows
+    data = [[Paragraph(_inline(cell), style) for cell in row] for row in rows]
+    table = Table(data, colWidths=[160 * mm / width] * width, repeatRows=1, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.lightgrey),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef4fb")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+    table.spaceBefore, table.spaceAfter = 3, 5
+    return table
 
 
 def _formula_box(formula: str, style: ParagraphStyle) -> Table:
@@ -396,6 +441,9 @@ def _styles(regular: str, bold: str) -> dict[str, ParagraphStyle]:
             fontSize=11.5,
             leading=17,
             alignment=TA_CENTER,
+        ),
+        "cell": ParagraphStyle(
+            "cell", parent=base["Normal"], fontName=regular, fontSize=8.5, leading=11
         ),
         "answer": ParagraphStyle(
             "answer",
