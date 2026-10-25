@@ -1,6 +1,6 @@
 """Summarize a lecture deck with map-reduce over chunks of slides.
 
-CLI:  python -m backend.summarize path/to/deck.pptx [--mode short|detailed]
+CLI:  python -m backend.summarize path/to/deck.pptx [--mode short|detailed] [-o summary.pdf]
 """
 
 import argparse
@@ -11,6 +11,7 @@ from pathlib import Path
 from string import Template
 
 from backend import config, llm
+from backend.pdf_builder import build_pdf, parse_summary
 from backend.extract import Deck, ExtractionError, Slide, extract_deck
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Summarize a lecture deck.")
     parser.add_argument("path", help="a .pptx, .ppt or .pdf file")
     parser.add_argument("--mode", choices=list(LENGTH_INSTRUCTIONS), default="short")
+    parser.add_argument("-o", "--output", default="summary.pdf", help="where to write the PDF")
     args = parser.parse_args(argv)
 
     # Progress goes to stderr so stdout is just the summary (pipeable to a file).
@@ -152,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(summary)
+    Path(args.output).write_bytes(build_pdf(parse_summary(summary), Path(args.path).name))
+    logger.info("Wrote %s", args.output)
     logger.info("Done: %d slides in %.1fs", len(deck.slides), time.perf_counter() - start)
     return 0
 
