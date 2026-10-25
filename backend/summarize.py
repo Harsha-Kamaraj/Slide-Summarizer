@@ -26,11 +26,16 @@ LENGTH_INSTRUCTIONS = {
     ),
     "detailed": (
         "Be thorough: this replaces reading the slides. Cover every distinct idea, definition, "
-        "formula and algorithm step in the notes. Each bullet is 1-3 full sentences that "
-        "explain the point, not just name it: what it means, why it matters, and the lecture's "
-        "example if there is one. Write each worked example or practice problem as its own "
-        "topic (e.g. '### Worked Example: ...') with the problem, the steps and the final "
-        "answer. Include limitations and comparisons the notes mention. Up to 15 terms."
+        "formula and algorithm step in the notes, but explain rather than transcribe. Each "
+        "bullet is 1-3 full sentences that explain the point: what it means, why it matters, "
+        "and the lecture's example if there is one. Never write a bullet that is only a label "
+        "(like 'Example:' or 'Data:'); fold short lists into the sentence that introduces them "
+        "(e.g. 'The four combinations are RR, RL, GR and GL.'). Aim for about 8-12 topics: merge "
+        "sections about the same idea into one topic. For algorithms, put nested sub-steps "
+        "inside their numbered step instead of separate bullets. Write each worked example or "
+        "practice problem as its own topic (e.g. '### Worked Example: ...') with the problem, "
+        "the steps and the final answer. Include limitations and comparisons the notes "
+        "mention. Up to 15 terms."
     ),
 }
 
@@ -39,8 +44,10 @@ LENGTH_INSTRUCTIONS = {
 NOTES_INSTRUCTIONS = {
     "short": "Keep the notes concise: main ideas and definitions only.",
     "detailed": (
-        "Be complete: keep every explanation, definition, formula, algorithm step, "
-        "and worked example (with its steps and final answer) that appears in the slides."
+        "Be complete but explain, don't transcribe: keep every explanation, definition, "
+        "formula, algorithm step and worked example (with its steps and final answer), written "
+        "as full sentences in your own words. Combine short slide fragments into sentences "
+        "instead of copying them line by line."
     ),
 }
 
