@@ -16,6 +16,7 @@ from string import Template
 from backend import config, llm
 from backend.pdf_builder import build_pdf, parse_summary
 from backend.extract import Deck, ExtractionError, Slide, extract_deck
+from backend.extras import generate_extra
 from backend.vision import describe_image_slides
 
 logger = logging.getLogger(__name__)
@@ -213,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", help="a .pptx, .ppt or .pdf file")
     parser.add_argument("--mode", choices=list(LENGTH_INSTRUCTIONS), default="detailed")
     parser.add_argument("-o", "--output", default="summary.pdf", help="where to write the PDF")
+    parser.add_argument("--extras", nargs="*", default=[], choices=["exam_questions", "flashcards"])
     args = parser.parse_args(argv)
 
     # Progress goes to stderr so stdout is just the summary (pipeable to a file).
@@ -222,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
     start = time.perf_counter()
     try:
         summary = summarize_file(args.path, mode=args.mode)
+        sections = [generate_extra(extra, summary, args.mode) for extra in args.extras]
+        summary = "\n\n".join([summary, *filter(None, sections)])
     except (ExtractionError, llm.LLMError) as exc:
         logger.error("Error: %s", exc)
         return 1

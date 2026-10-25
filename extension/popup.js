@@ -11,6 +11,11 @@ const backendInput = document.getElementById("backendUrl");
 async function init() {
   const settings = await getSettings();
   document.querySelector(`input[name="mode"][value="${settings.mode}"]`).checked = true;
+  for (const id of ["examQuestions", "flashcards"]) {
+    const box = document.getElementById(id);
+    box.checked = settings[id];
+    box.addEventListener("change", () => chrome.storage.sync.set({ [id]: box.checked }));
+  }
   backendInput.value = settings.backendUrl;
   checkBackend(settings.backendUrl);
 }

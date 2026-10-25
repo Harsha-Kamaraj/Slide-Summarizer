@@ -49,10 +49,12 @@ async function summarizeBlob(blob, filename) {
   if (blob.size > MAX_UPLOAD_MB * 1024 * 1024) {
     throw new Error(`This file is larger than the ${MAX_UPLOAD_MB} MB limit.`);
   }
-  const { backendUrl, mode } = await getSettings();
+  const { backendUrl, mode, examQuestions, flashcards } = await getSettings();
   const form = new FormData();
   form.append("file", blob, filename);
   form.append("mode", mode);
+  if (examQuestions) form.append("extras", "exam_questions");
+  if (flashcards) form.append("extras", "flashcards");
 
   setBadge("…", "#1f4e79");
   const stopKeepAlive = keepServiceWorkerAlive();

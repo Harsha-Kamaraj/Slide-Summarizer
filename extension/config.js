@@ -9,6 +9,8 @@ export const MAX_UPLOAD_MB = 50;
 export const DEFAULT_SETTINGS = {
   backendUrl: DEFAULT_BACKEND_URL,
   mode: "detailed", // "short" | "detailed"
+  examQuestions: false,
+  flashcards: false,
 };
 
 export async function getSettings() {
