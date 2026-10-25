@@ -1,0 +1,22 @@
+Below are revision notes written section by section from a lecture titled "$deck_title". Merge them into one coherent summary document.
+
+$length_instructions
+
+Output Markdown in exactly this structure, with these exact headings:
+
+# $deck_title
+
+## Overview
+(3-5 sentences: what the lecture covers and why it matters, based only on the notes)
+
+## Key Points
+### <Topic name>
+- <point>
+(repeat for each topic; merge duplicate topics across sections and order topics as they appear in the lecture)
+
+## Important Terms
+- **<Term>**: <one-line definition>
+(each term once, only terms defined in the notes)
+
+Notes:
+$notes

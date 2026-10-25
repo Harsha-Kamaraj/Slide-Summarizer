@@ -1,0 +1,10 @@
+Below are slides $first to $last of a lecture titled "$deck_title".
+
+Write revision notes for these slides:
+- Group related points under short topic headings (lines starting with "### "), not one heading per slide.
+- Under each heading, write bullet points ("- ") with the key ideas, definitions, formulas and steps.
+- If speaker notes add an explanation, include it.
+- After the bullets, add a line "Terms:" followed by bullets of the form "- Term: one-line definition" for every technical term defined in these slides. Write "Terms: none" if there are none.
+
+Slides:
+$slides
