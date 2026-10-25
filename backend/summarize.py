@@ -7,6 +7,7 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
 
@@ -75,10 +76,12 @@ def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
     system = load_prompt("system").template
     chunks = [slides[i : i + config.CHUNK_SIZE] for i in range(0, len(slides), config.CHUNK_SIZE)]
 
-    # Map: each chunk of slides becomes revision notes.
+    # Map: each chunk of slides becomes revision notes. Chunks don't depend on
+    # each other, so they can run in parallel; map() keeps the results in order.
     chunk_prompt = load_prompt("chunk_notes")
-    notes = []
-    for i, chunk in enumerate(chunks, start=1):
+
+    def chunk_notes(numbered_chunk: tuple[int, list[Slide]]) -> str:
+        i, chunk = numbered_chunk
         logger.info(
             "Summarizing chunk %d/%d (slides %d-%d)",
             i,
@@ -93,7 +96,10 @@ def summarize_deck(deck: Deck, mode: str = "detailed") -> str:
             detail_instructions=NOTES_INSTRUCTIONS[mode],
             slides=format_slides(chunk),
         )
-        notes.append(_ask(system, prompt))
+        return _ask(system, prompt, model=config.NOTES_MODEL)
+
+    with ThreadPoolExecutor(max_workers=max(1, config.LLM_PARALLEL_CALLS)) as pool:
+        notes = list(pool.map(chunk_notes, enumerate(chunks, start=1)))
 
     # Reduce: merge all chunk notes into one structured document.
     logger.info("Merging %d sections into the final summary", len(notes))
@@ -159,8 +165,9 @@ def format_slides(slides: list[Slide]) -> str:
     return "\n\n".join(blocks)
 
 
-def _ask(system: str, prompt: str) -> str:
-    return llm.chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}])
+def _ask(system: str, prompt: str, model: str | None = None) -> str:
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
+    return llm.chat(messages, model=model)
 
 
 def main(argv: list[str] | None = None) -> int:

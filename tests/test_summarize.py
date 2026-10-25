@@ -100,3 +100,37 @@ def test_malformed_summary_gets_one_fix_attempt(monkeypatch):
     assert result == GOOD_SUMMARY
     assert len(calls) == 3  # map, reduce, fix
     assert "did not follow the required structure" in calls[2][-1]["content"]
+
+
+def test_parallel_map_keeps_chunk_order_and_uses_notes_model(monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setattr(config, "CHUNK_SIZE", 1)
+    monkeypatch.setattr(config, "LLM_PARALLEL_CALLS", 4)
+    monkeypatch.setattr(config, "NOTES_MODEL", "small-model")
+    models, active, peak = [], [0], [0]
+    lock = threading.Lock()
+
+    def fake_chat(messages, model=None, **kwargs):
+        content = messages[-1]["content"]
+        if "revision notes written section by section" in content:  # reduce step
+            # Echo the notes (minus the template's headings) so order can be checked.
+            notes = content.replace("#", "")
+            return "# T\n## Overview\n" + notes + "\n## Key Points\n## Important Terms"
+        with lock:
+            models.append(model)
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        time.sleep(0.05)  # overlap the calls so parallelism is observable
+        with lock:
+            active[0] -= 1
+        return f"notes for {content.split('slides ')[1].split(' to')[0]}"
+
+    monkeypatch.setattr(summarize.llm, "chat", fake_chat)
+    result = summarize.summarize_deck(make_deck(4))
+
+    assert peak[0] > 1  # calls really overlapped
+    assert set(models) == {"small-model"}
+    # Notes reach the merge in slide order even though calls finished in any order.
+    assert result.index("notes for 1") < result.index("notes for 2") < result.index("notes for 4")
