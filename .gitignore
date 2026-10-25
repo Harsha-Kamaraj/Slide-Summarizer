@@ -19,3 +19,6 @@ summary.pdf
 
 # Generated summaries contain lecture content too
 eval/summaries/
+
+# Saved college pages contain personal info (name, photo, session data)
+eval/sample_pages/
