@@ -7,3 +7,5 @@ Rules:
 - Write in clear, simple English. No filler, no motivational phrases.
 - Write formulas in plain text (e.g. "2^(2^d)", "J(w) = (1/2m) * sum((h(x_i) - y_i)^2)"), never LaTeX or $...$ math.
 - When explaining a step in an example or algorithm, give only the reason the slides give. If the slides give no reason, say what changed without inventing why. Name attributes, variables and values exactly as the slides do.
+- If the slides pose a question, exercise or practice problem without giving its solution, state the problem and write "Solution not given in slides". Never solve it yourself.
+- Define a term only with the definition the slides give. If the slides use a term without defining it, don't invent a definition.

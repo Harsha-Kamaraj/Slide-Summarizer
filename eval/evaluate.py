@@ -47,7 +47,14 @@ def extract_claims(markdown: str) -> list[str]:
     summary = parse_summary(markdown)
     claims = [point for topic in summary.topics for point in topic.points]
     claims += [f"{term}: {definition}" for term, definition in summary.terms if definition]
-    return claims
+    return [claim for claim in claims if _is_statement(claim)]
+
+
+def _is_statement(claim: str) -> bool:
+    """Skip fragments that state nothing checkable: a label introducing the
+    next lines ("Steps:"), an empty formula, a lone number."""
+    text = re.sub(r"^(Formula:|\d+\.)\s*", "", claim).strip()
+    return len(text.split()) >= 3 and not text.endswith(":")
 
 
 def judge_claims(deck: Deck, claims: list[str]) -> list[str]:

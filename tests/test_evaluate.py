@@ -62,3 +62,13 @@ def test_judge_sees_only_slides_relevant_to_the_claims(monkeypatch):
     )
     picked = evaluate.relevant_slides(deck, ["The version space holds consistent hypotheses."])
     assert [s.number for s in picked] == [2]
+
+
+def test_fragments_are_not_claims():
+    summary = SUMMARY.replace(
+        "- Find-S ignores negative examples.",
+        "- Find-S ignores negative examples.\n- Steps:\nFormula: \n- 4. sunny",
+    )
+    claims = evaluate.extract_claims(summary)
+    assert "Steps:" not in claims and "Formula: " not in claims
+    assert all("sunny" not in c or "{" in c for c in claims)
