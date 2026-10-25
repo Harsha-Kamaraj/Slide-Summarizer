@@ -14,8 +14,8 @@ ollama pull gemma4:12b        # default model; see backend/config.py
 Run from the repo root:
 
 ```bash
-.venv/bin/python -m backend.summarize path/to/deck.pptx                   # writes summary.pdf
-.venv/bin/python -m backend.summarize path/to/deck.pdf --mode detailed -o notes.pdf
+.venv/bin/python -m backend.summarize path/to/deck.pptx                # detailed summary -> summary.pdf
+.venv/bin/python -m backend.summarize path/to/deck.pdf --mode short -o notes.pdf
 ```
 
 The Markdown summary is also printed to stdout. Supports `.pptx`, `.ppt` and `.pdf`. Settings (model, chunk size, LLM URL) can be overridden with env vars; see `backend/config.py`.
