@@ -9,11 +9,12 @@ after this step (map-reduce, PDF) is unchanged: it just sees more text.
 
 import base64
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
 
-from backend import config, llm
+from backend import config, execution, llm
 from backend.extract import Deck, Slide
 from backend.render import render_slides
 
@@ -24,30 +25,44 @@ PROMPT = Template((Path(__file__).parent / "prompts" / "vision_slide.txt").read_
 NO_CONTENT = "NO_CONTENT"
 
 
-def describe_image_slides(deck: Deck, path: str | Path) -> int:
+def describe_image_slides(deck: Deck, path: str | Path, progress=None) -> int:
     """Add vision-model descriptions to the deck's image-heavy slides.
 
     Returns how many slides got a description.
     """
-    targets = [s for s in deck.slides if s.is_image_heavy][: config.MAX_VISION_SLIDES]
+    targets = [s for s in deck.slides if s.is_image_heavy and not s.is_administrative][
+        : config.MAX_VISION_SLIDES
+    ]
     if not targets:
         return 0
     logger.info("Describing %d image-heavy slides with %s", len(targets), config.VISION_MODEL)
     images = render_slides(path, [s.number for s in targets])
+    report = progress or (lambda message: None)
+    done = 0
+    lock = threading.Lock()
 
     def describe(slide: Slide) -> str | None:
+        nonlocal done
         if slide.number not in images:
+            deck.vision_failures.append(slide.number)
             return None
         try:
-            return _ask_vision(deck.title, slide, images[slide.number])
+            with execution.phase(f"Reading diagram on slide {slide.number}"):
+                return _ask_vision(deck.title, slide, images[slide.number])
         except llm.LLMError as exc:
             # One unreadable slide shouldn't sink the whole summary; the text
             # step will still run (and report if the model is down entirely).
             logger.warning("Vision failed for slide %d: %s", slide.number, exc)
+            with lock:
+                deck.vision_failures.append(slide.number)
             return None
+        finally:
+            with lock:
+                done += 1
+                report(f"Checked {done}/{len(targets)} diagram slides…")
 
     with ThreadPoolExecutor(max_workers=max(1, config.LLM_PARALLEL_CALLS)) as pool:
-        descriptions = list(pool.map(describe, targets))
+        descriptions = execution.parallel_map(pool, describe, targets)
 
     described = 0
     for slide, description in zip(targets, descriptions):

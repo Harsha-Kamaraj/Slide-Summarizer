@@ -17,12 +17,12 @@ from dataclasses import dataclass
 
 import httpx
 
-from backend import config
+from backend import config, execution, pacing
 
 logger = logging.getLogger(__name__)
 
 # Upper bound on how long we honour a provider's Retry-After header.
-MAX_RETRY_AFTER_SECONDS = 30
+MAX_RETRY_AFTER_SECONDS = 120
 _sleep = time.sleep  # replaced in tests
 
 
@@ -83,7 +83,13 @@ def chat(
     """
     requested = model or config.TEXT_MODEL
     has_images = any(isinstance(m["content"], list) for m in messages)
+    execution.remaining()
+    if pacing.estimate_tokens(messages) > config.LLM_INPUT_TOKEN_BUDGET:
+        raise RequestTooLarge("Input exceeds the configured AI budget; split it into sections.")
     error: LLMError | None = None
+    attempted = set()
+    requests = []
+    from backend import cache
 
     for provider in providers():
         if provider.name == "primary":
@@ -92,11 +98,25 @@ def chat(
             use_model = provider.vision_model if has_images else provider.text_model
             if use_model is None:
                 continue  # this fallback has no model for this kind of request
+        identity = (provider.base_url.rstrip("/"), use_model)
+        if identity in attempted:
+            continue  # the same vision model/account is not a second allowance
+        attempted.add(identity)
         payload: dict = {"model": use_model, "messages": messages, "temperature": temperature}
         if provider.reasoning_effort:
             payload["reasoning_effort"] = provider.reasoning_effort
         if max_tokens:
             payload["max_tokens"] = max_tokens
+        checkpoint = cache.object_key("ai-reply-v1", [provider.base_url, payload])
+        requests.append((provider, payload, checkpoint))
+    # A previous attempt may have succeeded on the fallback. Check every
+    # checkpoint before spending another primary-provider request/retry.
+    for _, _, checkpoint in requests:
+        saved = cache.get(checkpoint)
+        if saved:
+            execution.report("Reusing a saved AI section…")
+            return saved
+    for provider, payload, checkpoint in requests:
         try:
             data = _post_with_retries(provider, payload)
         except RequestTooLarge:
@@ -108,7 +128,16 @@ def chat(
             error = exc
             continue
         try:
-            return strip_thinking(data["choices"][0]["message"]["content"])
+            choice = data["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise RequestTooLarge(
+                    "AI output was cut short; split the input into smaller sections."
+                )
+            reply = strip_thinking(choice["message"]["content"]).strip()
+            if not reply:
+                raise LLMError("The AI returned an empty answer. Retry to reuse saved sections.")
+            cache.put(checkpoint, reply)
+            return reply
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"Unexpected response from the model: {data!r:.200}") from exc
 
@@ -135,10 +164,21 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
     attempts = config.LLM_MAX_RETRIES + 1
 
     for attempt in range(1, attempts + 1):
+        execution.remaining()
         last_attempt = attempt == attempts
+        budget = pacing.estimate_tokens(payload["messages"]) + payload.get(
+            "max_tokens", config.LLM_OUTPUT_TOKEN_BUDGET
+        )
+        if config.LLM_TOKENS_PER_MINUTE and budget > config.LLM_TOKENS_PER_MINUTE:
+            raise RequestTooLarge("This request exceeds the configured per-minute AI budget.")
+        pacing.limiter.acquire((provider.base_url.rstrip("/"), model), budget)
+        execution.report(f"AI is processing a section ({model}, attempt {attempt}/{attempts})…")
         try:
             response = httpx.post(
-                url, json=payload, headers=headers, timeout=config.LLM_TIMEOUT_SECONDS
+                url,
+                json=payload,
+                headers=headers,
+                timeout=min(config.LLM_TIMEOUT_SECONDS, execution.remaining()),
             )
         except httpx.ConnectError as exc:
             # Retrying won't help if nothing is listening.
@@ -177,8 +217,14 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
             if last_attempt:
                 raise ProviderUnavailable("The AI service is busy (rate limited).")
             wait = _retry_after(response, default=2**attempt)
+            if wait > MAX_RETRY_AFTER_SECONDS:
+                raise ProviderUnavailable(
+                    "The AI quota will not reset soon. Completed sections are saved; try again later."
+                )
+            pacing.limiter.defer((provider.base_url.rstrip("/"), model), wait)
             logger.warning("Rate limited; waiting %.0fs (attempt %d/%d)", wait, attempt, attempts)
-            _sleep(wait)
+            execution.report(f"AI rate limit: waiting {wait:.0f}s (attempt {attempt}/{attempts})…")
+            _sleep(min(wait, execution.remaining()))
             continue
         if status >= 500:
             if last_attempt:
@@ -203,4 +249,4 @@ def _retry_after(response: httpx.Response, default: float) -> float:
         seconds = float(response.headers.get("retry-after", default))
     except ValueError:  # an HTTP date instead of seconds; just use the default
         seconds = default
-    return min(max(seconds, 0), MAX_RETRY_AFTER_SECONDS)
+    return max(seconds, 0)

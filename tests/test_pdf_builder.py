@@ -113,6 +113,22 @@ def test_formula_markup_superscripts_and_subscripts():
     assert _formula_markup("2 ^ (3 x 2)") == "2<super>3 x 2</super>"
 
 
+def test_empty_formula_placeholders_do_not_create_boxes():
+    summary = parse_summary(
+        "# ER Model\n## Key Points\n### Participation\n"
+        "- A double line indicates total participation.\n"
+        "Formula: none\n- `Formula: N/A`\nFormula: **None**\n"
+        "Formula: \nFormula: not applicable.\n"
+    )
+    assert summary.topics[0].points == ["A double line indicates total participation."]
+    with pymupdf.open(stream=build_pdf(summary), filetype="pdf") as doc:
+        text = "".join(page.get_text() for page in doc)
+        assert "double line indicates total participation" in text
+        assert "none" not in text.lower()
+        assert "N/A" not in text
+        assert not any(d.get("fill") for page in doc for d in page.get_drawings())
+
+
 EXTRAS_MD = """# T
 ## Overview
 x

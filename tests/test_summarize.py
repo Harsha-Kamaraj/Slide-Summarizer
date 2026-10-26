@@ -190,7 +190,7 @@ def test_oversized_notes_are_split_without_losing_source_text(monkeypatch):
     source = "\n\n".join(f"unique_fact_{i}: " + "detail " * 20 for i in range(12))
     accepted = []
 
-    def ask(system, prompt, model=None):
+    def ask(system, prompt, model=None, **kwargs):
         if len(prompt) > 500:
             raise summarize.llm.RequestTooLarge("too large")
         accepted.append(prompt)

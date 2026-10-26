@@ -23,7 +23,23 @@ services:
       - key: LLM_REASONING_EFFORT
         value: low
       - key: LLM_MAX_RETRIES
-        value: "6"
+        value: "2"
+      - key: LLM_TIMEOUT_SECONDS
+        value: "90"
+      - key: LLM_TOKENS_PER_MINUTE
+        value: "7200" # reserve headroom below the current 8000-token allowance
+      - key: LLM_REQUESTS_PER_MINUTE
+        value: "25"
+      - key: LLM_INPUT_TOKEN_BUDGET
+        value: "4500"
+      - key: LLM_OUTPUT_TOKEN_BUDGET
+        value: "2200"
+      - key: NOTES_MAX_TOKENS
+        value: "1200"
+      - key: VISION_MAX_TOKENS
+        value: "450"
+      - key: JOB_MAX_SECONDS
+        value: "1200"
       # Fallback when the main model's quota runs out (decision #30)
       - key: FALLBACK_BASE_URL
         value: https://api.groq.com/openai/v1

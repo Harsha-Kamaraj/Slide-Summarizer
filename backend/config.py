@@ -27,9 +27,8 @@ MAX_VISION_SLIDES: int = int(os.getenv("MAX_VISION_SLIDES", "20"))
 # some hosted free tiers (e.g. Groq's vision model) only allow ~1000 output
 # tokens per minute, rejecting any request that could exceed it.
 VISION_MAX_TOKENS: int = int(os.getenv("VISION_MAX_TOKENS", "900"))
-# Per request. A detailed merge on a laptop can write ~3,000+ tokens at ~12
-# tokens/s, so 5 minutes wasn't enough; hosted models finish in seconds, so a
-# generous limit costs nothing there.
+# Local per-request default; the hosted Docker/Blueprint configuration uses
+# 90 seconds to avoid repeated 15-minute waits on stalled hosted requests.
 LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "900"))
 # "none" turns off Gemma 4's thinking mode, which roughly doubles latency.
 # Set to "" to omit the field for providers that don't support it.
@@ -38,6 +37,15 @@ LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "2"))
 # How many chunk-note calls run at once. Chunks are independent, so a hosted
 # API can do them in parallel; a laptop GPU gains little, so default to 1.
 LLM_PARALLEL_CALLS: int = int(os.getenv("LLM_PARALLEL_CALLS", "1"))
+LLM_TOKENS_PER_MINUTE: int = int(os.getenv("LLM_TOKENS_PER_MINUTE", "0"))
+LLM_REQUESTS_PER_MINUTE: int = int(os.getenv("LLM_REQUESTS_PER_MINUTE", "0"))
+LLM_IMAGE_TOKEN_ESTIMATE: int = int(os.getenv("LLM_IMAGE_TOKEN_ESTIMATE", "2500"))
+LLM_INPUT_TOKEN_BUDGET: int = int(os.getenv("LLM_INPUT_TOKEN_BUDGET", "4500"))
+LLM_OUTPUT_TOKEN_BUDGET: int = int(os.getenv("LLM_OUTPUT_TOKEN_BUDGET", "2200"))
+NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", "1200"))
+JOB_MAX_SECONDS: int = int(os.getenv("JOB_MAX_SECONDS", "1200"))
+INCLUDE_DIAGRAMS: bool = os.getenv("INCLUDE_DIAGRAMS", "1") == "1"
+MAX_DIAGRAM_SLIDES: int = int(os.getenv("MAX_DIAGRAM_SLIDES", "40"))
 
 # Optional fallback provider, used when the main one is rate-limited, down or
 # timing out (e.g. a second free tier). Leave FALLBACK_BASE_URL empty to disable.

@@ -71,6 +71,8 @@ After changing extension code, click the ↻ reload icon on the extension's card
 ## Image-heavy slides (Stage 5)
 Slides with fewer than 15 words (diagrams, screenshots, quotes inside pictures) are rendered as images and described by a vision model (`VISION_MODEL`, default `gemma4:12b`) before summarizing. Turn it off with `VISION_ENABLED=0`; cap it with `MAX_VISION_SLIDES`.
 
+Backend 0.5.0 also preserves detected original visual slides in a numbered PDF appendix (`INCLUDE_DIAGRAMS`, `MAX_DIAGRAM_SLIDES`). It paces AI requests, splits oversized inputs before sending them, and caches successful intermediate responses, questions and flashcards. After a server restart, unfinished jobs require re-upload but reuse saved work; completed job downloads can be restored. See the deployment guide for quota settings and recovery limits.
+
 ## Evaluation (Stage 6)
 ```bash
 .venv/bin/python -m eval.evaluate                         # all decks in eval/sample_decks

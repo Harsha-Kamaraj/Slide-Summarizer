@@ -4,14 +4,16 @@ Many students in a class summarize the same lecture. The first one waits for
 the model; everyone after gets the saved summary instantly. This is also what
 keeps a hosted free-tier LLM within its daily limits.
 
-What's stored is the Markdown summary, never the uploaded file (privacy), and
-not the PDF either: rebuilding the PDF takes milliseconds, so layout changes
-apply to cached summaries without re-running the model.
+Stored entries include generated text, successful AI sections, job records and
+selected source images. The full uploaded file and generated PDF aren't kept;
+PDFs are rebuilt so layout fixes apply without repeating AI work.
 """
 
 import hashlib
+import json
 import logging
 import threading
+import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,7 +29,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 # Bump when extraction or summarization *code* changes in a way that should
 # invalidate old summaries. Prompt and model changes are detected automatically.
-PIPELINE_VERSION = "2"  # 2: exponents kept in PDF/PPTX extraction
+PIPELINE_VERSION = "3"  # source figures, bounded requests and resumable sections
 
 
 # Prompt files that shape the summary itself. Extras have their own prompt, so
@@ -47,8 +49,23 @@ def cache_key(content_hash: str, mode: str, part: str = "summary") -> str:
     parts = [content_hash, mode, part, PIPELINE_VERSION, config.TEXT_MODEL]
     if part == "summary":
         parts += [config.NOTES_MODEL, f"vision={config.VISION_ENABLED}:{config.VISION_MODEL}"]
+        parts += [
+            str(x)
+            for x in (
+                config.MAX_VISION_SLIDES,
+                config.VISION_MAX_TOKENS,
+                config.CHUNK_SIZE,
+                config.NOTES_MAX_TOKENS,
+                config.LLM_INPUT_TOKEN_BUDGET,
+                config.LLM_OUTPUT_TOKEN_BUDGET,
+                config.INCLUDE_DIAGRAMS,
+                config.MAX_DIAGRAM_SLIDES,
+            )
+        ]
         prompts = SUMMARY_PROMPTS
     else:
+        # Extras derive from the summary: a summary change invalidates them too.
+        parts.append(cache_key(content_hash, mode))
         prompts = ("system", extras.prompt_name(part))
     for name in prompts:
         parts.append(hashlib.sha256((PROMPTS_DIR / f"{name}.txt").read_bytes()).hexdigest())
@@ -70,17 +87,28 @@ def get(key: str) -> str | None:
 def put(key: str, summary: str) -> None:
     _write_local(_path(key), summary)
     if config.CACHE_HF_REPO:
-        # Upload in the background: the student shouldn't wait for it.
-        threading.Thread(target=_remote_put, args=(key, summary), daemon=True).start()
+        # Finish the remote write before reporting saved work. A daemon thread
+        # could be killed during a deploy, silently losing the only durable copy.
+        _remote_put(key, summary)
+
+
+def object_key(kind: str, data) -> str:
+    return hashlib.sha256(
+        json.dumps([kind, data], sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 def _write_local(path: Path, summary: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write to a temp file and rename: a crash mid-write can't leave a
     # half-written summary that later requests would serve.
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(summary)
-    tmp.replace(path)
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as out:
+        tmp = Path(out.name)
+        out.write(summary)
+    try:
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # --- Remote store: a private Hugging Face dataset ------------------------
@@ -105,15 +133,20 @@ def _remote_get(key: str) -> str | None:
         return None
 
 
+_remote_write_lock = threading.Lock()
+
+
 def _remote_put(key: str, summary: str) -> None:
     try:
-        HfApi(token=config.HF_TOKEN or None).upload_file(
-            path_or_fileobj=summary.encode(),
-            path_in_repo=f"{key}.md",
-            repo_id=config.CACHE_HF_REPO,
-            repo_type="dataset",
-            commit_message="Cache summary",
-        )
+        # Parallel completions must not race commits to the same dataset.
+        with _remote_write_lock:
+            HfApi(token=config.HF_TOKEN or None).upload_file(
+                path_or_fileobj=summary.encode(),
+                path_in_repo=f"{key}.md",
+                repo_id=config.CACHE_HF_REPO,
+                repo_type="dataset",
+                commit_message="Cache summary checkpoint",
+            )
     except Exception as exc:
         logger.warning("Remote cache write failed: %s", exc)
 

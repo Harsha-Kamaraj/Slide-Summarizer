@@ -14,6 +14,7 @@ Output ONE Markdown document in exactly this structure. Use the "# " title once 
 ### <Topic name>
 - <point: state the idea, then explain it in plain words: what it means, why it matters, or how it is used, with the lecture's own example where there is one>
 Formula: <formula in plain text, on its own line, right after the bullet that introduces it; then a bullet explaining what each symbol means>
+(Formula lines are optional: include one only when the notes contain an actual formula. Otherwise omit the line entirely; never write "Formula: none" or "Formula: N/A".)
 1. <step> (use a numbered list for algorithm steps or procedures)
 (repeat for each topic; merge duplicate topics across sections. Order topics as they first appear in the lecture, and put applications or examples of a topic directly after that topic, never collected at the end)
 

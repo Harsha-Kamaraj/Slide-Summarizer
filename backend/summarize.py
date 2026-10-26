@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from string import Template
 
-from backend import config, llm
+from backend import config, execution, figures, llm
 from backend.pdf_builder import build_pdf, parse_summary
 from backend.extract import Deck, ExtractionError, Slide, extract_deck
 from backend.extras import generate_extra
@@ -78,11 +78,20 @@ def summarize_file(
     report("Reading slides…")
     deck = extract_deck(path)
     if config.VISION_ENABLED:
-        heavy = sum(s.is_image_heavy for s in deck.slides)
+        heavy = sum(s.is_image_heavy and not s.is_administrative for s in deck.slides)
         if heavy:
             report(f"Reading {min(heavy, config.MAX_VISION_SLIDES)} diagram slides…")
-            describe_image_slides(deck, path)
-    return summarize_deck(deck, mode=mode, progress=report)
+            describe_image_slides(deck, path, progress=report)
+    figure_marker = figures.prepare(deck, path, report)
+    summary = summarize_deck(deck, mode=mode, progress=report)
+    if deck.vision_failures:
+        warning = (
+            "Image analysis was unavailable for source slides "
+            + ", ".join(str(n) for n in sorted(deck.vision_failures))
+            + ". Check the original slides for visual details."
+        )
+        summary = summary.replace("## Key Points", warning + "\n\n## Key Points", 1)
+    return summary + ("\n\n" + figure_marker if figure_marker else "")
 
 
 def summarize_deck(
@@ -134,7 +143,8 @@ def summarize_deck(
                 slides=text,
             )
 
-        notes = _notes_with_splitting(system, prompt_for, format_slides(chunk), report)
+        with execution.phase(f"Summarizing section {i}/{len(chunks)}"):
+            notes = _notes_with_splitting(system, prompt_for, format_slides(chunk), report)
         with done_lock:
             done += 1
             if done < len(chunks):
@@ -143,13 +153,14 @@ def summarize_deck(
 
     report(f"Summarizing part 1/{len(chunks)}…")
     with ThreadPoolExecutor(max_workers=max(1, config.LLM_PARALLEL_CALLS)) as pool:
-        notes = list(pool.map(chunk_notes, enumerate(chunks, start=1)))
+        notes = execution.parallel_map(pool, chunk_notes, enumerate(chunks, start=1))
     terms = collect_terms(chunks, notes, limit=TERMS_LIMIT[mode])
 
     # Reduce: merge all chunk notes into one structured document.
     logger.info("Merging %d sections into the final summary", len(notes))
     report("Putting the summary together…")
-    summary = _summary_with_splitting(system, deck.title, mode, "\n\n".join(notes), report)
+    with execution.phase("Building final summary"):
+        summary = _summary_with_splitting(system, deck.title, mode, "\n\n".join(notes), report)
     if terms:
         lines = [f"- **{term}**: {definition}" for term, definition in terms]
         summary = summary.rstrip() + "\n\n## Important Terms\n" + "\n".join(lines)
@@ -179,7 +190,9 @@ def _split_oversized_text(text: str, depth: int) -> tuple[str, str]:
 
 def _notes_with_splitting(system, prompt_for, text, report, depth=0):
     try:
-        return _ask(system, prompt_for(text), model=config.NOTES_MODEL)
+        return _ask(
+            system, prompt_for(text), model=config.NOTES_MODEL, max_tokens=config.NOTES_MAX_TOKENS
+        )
     except llm.RequestTooLarge:
         left, right = _split_oversized_text(text, depth)
         report("Processing smaller sections to fit the AI limit…")
@@ -189,16 +202,22 @@ def _notes_with_splitting(system, prompt_for, text, report, depth=0):
         )
 
 
-def _summary_with_splitting(system, title, mode, notes, report, depth=0):
+def _summary_with_splitting(system, title, mode, notes, report, depth=0, section="1"):
+    execution.remaining()
+    if depth:
+        report(f"Building summary section {section}…")
     try:
         return _final_summary(system, title, mode, notes)
     except llm.RequestTooLarge:
         left, right = _split_oversized_text(notes, depth)
         report("Building the summary in smaller sections to fit the AI limit…")
-        parts = [
-            _summary_with_splitting(system, title, mode, part, report, depth + 1)
-            for part in (left, right)
-        ]
+        parts = []
+        for number, part in enumerate((left, right), 1):
+            label = f"{section}.{number}"
+            with execution.phase(f"Building summary section {label}"):
+                parts.append(
+                    _summary_with_splitting(system, title, mode, part, report, depth + 1, label)
+                )
         # Don't feed all the results back into another oversized model call.
         # Assemble their overviews and topics locally, retaining every part.
         overviews, topics = [], []
@@ -238,7 +257,8 @@ def _final_summary(system, title, mode, notes):
                 {"role": "user", "content": final_prompt},
                 {"role": "assistant", "content": summary},
                 {"role": "user", "content": FIX_STRUCTURE_PROMPT.format(problem=problem)},
-            ]
+            ],
+            max_tokens=config.LLM_OUTPUT_TOKEN_BUDGET,
         )
         problem = structure_problem(summary)
         if problem:
@@ -341,9 +361,9 @@ def format_slides(slides: list[Slide]) -> str:
     return "\n\n".join(blocks)
 
 
-def _ask(system: str, prompt: str, model: str | None = None) -> str:
+def _ask(system: str, prompt: str, model: str | None = None, max_tokens: int | None = None) -> str:
     messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
-    return llm.chat(messages, model=model)
+    return llm.chat(messages, model=model, max_tokens=max_tokens or config.LLM_OUTPUT_TOKEN_BUDGET)
 
 
 def main(argv: list[str] | None = None) -> int:

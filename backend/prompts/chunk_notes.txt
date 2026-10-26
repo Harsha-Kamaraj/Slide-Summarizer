@@ -4,9 +4,11 @@ Write revision notes for these slides:
 - Group related points under short topic headings (lines starting with "### "), not one heading per slide.
 - Under each heading, write bullet points ("- ") with the key ideas, definitions and steps.
 - Put every formula on its own line starting with "Formula: " (plain text), right after the bullet that introduces it.
+- If there is no formula, omit the formula line entirely; never write "Formula: none" or "Formula: N/A".
 - If speaker notes add an explanation, include it.
 - Skip administrative content: author and instructor names, acknowledgements, quiz links, image sources (e.g. "Source - Google").
 - $detail_instructions
+- Avoid repeated explanations and filler. Use compact notes, aiming for 700 words or fewer while preserving distinct facts, formulas and worked steps.
 - After the bullets, add a line "Terms:" followed by bullets of the form "- Term: definition" for every technical term these slides explicitly define, using the slides' own wording for the definition. Leave out terms the slides only mention without defining. Write "Terms: none" if there are none.
 
 Slides:

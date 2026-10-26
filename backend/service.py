@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from backend import cache
+from backend import cache, config, execution
 from backend.extras import generate_extra
 from backend.summarize import summarize_file
 
@@ -25,6 +25,11 @@ def run(
     extras: list[str],
     progress: Progress = no_progress,
 ) -> tuple[str, bool]:
+    with execution.scope(progress, config.JOB_MAX_SECONDS):
+        return _run(path, content_hash, mode, extras, progress)
+
+
+def _run(path, content_hash, mode, extras, progress):
     """Return (markdown, from_cache). from_cache is True only if nothing had
     to be generated."""
     generated = False
@@ -36,18 +41,24 @@ def run(
             summary = summarize_file(path, mode=mode, progress=progress)
             cache.put(key, summary)
             generated = True
+        else:
+            progress("Reusing saved summary…")
 
     sections = []
     for extra in extras:
+        execution.remaining()
         key = cache.cache_key(content_hash, mode, extra)
         with cache.lock(key):
             section = cache.get(key)
             if section is None:
                 progress(f"Writing {extra.replace('_', ' ')}…")
-                section = generate_extra(extra, summary, mode)
+                with execution.phase(f"Writing {extra.replace('_', ' ')}"):
+                    section = generate_extra(extra, summary, mode)
                 generated = True
                 if section:  # don't cache a failed extra; retry it next time
                     cache.put(key, section)
+            else:
+                progress(f"Reusing saved {extra.replace('_', ' ')}…")
         if section:
             sections.append(section)
 

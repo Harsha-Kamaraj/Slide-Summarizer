@@ -24,7 +24,7 @@ from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from backend import config, jobs, llm, ratelimit, service
+from backend import config, execution, jobs, llm, ratelimit, service
 from backend.extract import ExtractionError
 from backend.pdf_builder import build_pdf, parse_summary
 
@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Slide Summarizer", version="0.4.0")
+app = FastAPI(title="Slide Summarizer", version="0.5.0")
 
 Mode = Literal["short", "detailed"]
 Extra = Literal["exam_questions", "flashcards"]
@@ -90,7 +90,7 @@ def summarize(
             markdown, from_cache = service.run(saved, content_hash, mode, extras)
         except ExtractionError as exc:
             raise HTTPException(422, str(exc)) from exc
-        except llm.LLMError as exc:
+        except (llm.LLMError, execution.DeadlineExceeded) as exc:
             logger.error("LLM failure for %s: %s", filename, exc)
             raise HTTPException(503, f"The summarizer is unavailable right now: {exc}") from exc
 
@@ -143,6 +143,8 @@ def job_status(job_id: str) -> dict:
         "error": job.error,
         "cached": job.from_cache,
         "summary_id": job.summary_id,
+        "elapsed_seconds": round((job.finished or time.time()) - job.created),
+        "updated_at": job.updated,
     }
 
 

@@ -1,6 +1,7 @@
 """Turn a lecture file (.pptx, .ppt or .pdf) into plain text, one entry per slide."""
 
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -28,6 +29,14 @@ class Slide:
     title: str
     text: str
     notes: str = ""
+    has_visual: bool = False
+
+    @property
+    def is_administrative(self) -> bool:
+        return bool(
+            re.match(r"^(thank\s+you|acknowledg[e]?ments?|references|credits)\b", self.title, re.I)
+            or re.match(r"^(anchor:|slides adapted from)\s", self.text.strip(), re.I)
+        )
 
     @property
     def word_count(self) -> int:
@@ -44,6 +53,7 @@ class Slide:
 class Deck:
     title: str
     slides: list[Slide] = field(default_factory=list)
+    vision_failures: list[int] = field(default_factory=list)
 
 
 def extract_deck(path: str | Path) -> Deck:
@@ -96,7 +106,27 @@ def _extract_pptx(path: Path) -> Deck:
         if slide.has_notes_slide:
             notes = slide.notes_slide.notes_text_frame.text.strip()
 
-        slides.append(Slide(number=number, title=title, text=text, notes=notes))
+        visual_types = {
+            MSO_SHAPE_TYPE.PICTURE,
+            MSO_SHAPE_TYPE.CHART,
+            MSO_SHAPE_TYPE.GROUP,
+            MSO_SHAPE_TYPE.FREEFORM,
+        }
+        has_visual = (
+            any(
+                s.shape_type in visual_types
+                and s.width * s.height > prs.slide_width * prs.slide_height * 0.06
+                for s in body_shapes
+            )
+            or sum(
+                s.shape_type in {MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE}
+                for s in body_shapes
+            )
+            >= 3
+        )
+        slides.append(
+            Slide(number=number, title=title, text=text, notes=notes, has_visual=has_visual)
+        )
 
     return Deck(title=_pick_title(prs.core_properties.title, slides, path.stem), slides=slides)
 
@@ -200,6 +230,7 @@ def _extract_pdf(path: Path) -> Deck:
 
     with doc:
         pages = [_page_lines(page) for page in doc]
+        visuals = [_page_has_visual(page) for page in doc]
         meta_title = (doc.metadata or {}).get("title", "")
 
     boilerplate = _repeated_lines(pages)
@@ -210,9 +241,27 @@ def _extract_pdf(path: Path) -> Deck:
         # the first line of a slide export is almost always the slide heading.
         title = lines[0] if lines else ""
         text = "\n".join(lines[1:])
-        slides.append(Slide(number=number, title=title, text=text))
+        slides.append(Slide(number=number, title=title, text=text, has_visual=visuals[number - 1]))
 
     return Deck(title=_pick_title(meta_title, slides, path.stem), slides=slides)
+
+
+def _page_has_visual(page):
+    """A heuristic for substantive pictures/vector diagrams, not just logos.
+
+    Keep the entire source page when selected so no arrow/label is cropped.
+    Tables may also be selected, which is useful for visual reference.
+    """
+    area = page.rect.get_area()
+    if any(pymupdf.Rect(image["bbox"]).get_area() > area * 0.08 for image in page.get_image_info()):
+        return True
+    body = pymupdf.Rect(0, page.rect.height * 0.15, page.rect.width, page.rect.height * 0.9)
+    # Filled paths can be text glyphs/highlights. Count stroked connectors and
+    # outlined shapes rather than mistaking ordinary text for diagrams.
+    shapes = [
+        d["rect"] for d in page.get_drawings() if "s" in d["type"] and body.contains(d["rect"])
+    ]
+    return len(shapes) >= 3 and sum(r.get_area() for r in shapes) > area * 0.04
 
 
 def _page_lines(page: pymupdf.Page) -> list[str]:

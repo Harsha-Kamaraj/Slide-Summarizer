@@ -52,7 +52,7 @@ def test_only_image_heavy_slides_are_sent_and_described(mixed_pdf, fake_vision, 
     described = vision.describe_image_slides(deck, mixed_pdf)
 
     assert described == 1  # the diagram; "Thank You" answered NO_CONTENT
-    assert len(fake_vision) == 2  # the text-heavy slide was never sent
+    assert len(fake_vision) == 1  # skip the text-heavy slide and the closing slide
     assert all(r["model"] == "vision-model" for r in fake_vision)
     assert fake_vision[0]["image"]["image_url"]["url"].startswith("data:image/png;base64,")
     assert deck.slides[1].text == "[From the slide image] Boxes: Data -> Model -> Prediction."
@@ -68,7 +68,9 @@ def test_one_failed_slide_does_not_stop_the_rest(mixed_pdf, monkeypatch):
 
     monkeypatch.setattr(vision.llm, "chat", flaky)
     deck = extract_deck(mixed_pdf)
-    assert vision.describe_image_slides(deck, mixed_pdf) == 1
+    # The only teaching image fails; the administrative closing slide isn't sent.
+    assert vision.describe_image_slides(deck, mixed_pdf) == 0
+    assert deck.vision_failures == [2]
 
 
 def test_vision_calls_are_capped(mixed_pdf, fake_vision, monkeypatch):

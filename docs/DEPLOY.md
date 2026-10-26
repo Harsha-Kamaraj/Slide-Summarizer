@@ -66,11 +66,19 @@ Three tested options (October 2026). Hugging Face Docker Spaces now need a paid 
 
 What the free tier means in practice:
 - The first student after 15 quiet minutes waits ~50 s while the server wakes up. After that it's normal speed.
-- Reading a deck takes ~4–5 s at 0.1 CPU, and the AI time is Groq's (1–3 min for a new deck).
+- Extraction is usually much faster than AI processing. Large decks can take many minutes under shared quotas; there is no fixed completion-time guarantee.
 - Cached summaries survive sleeps and restarts (Hugging Face dataset). Feedback and daily-limit counts reset on restart.
 - Tables ruled with plain lines (rare in PowerPoint exports) aren't read as tables there (`SLOW_TABLE_FALLBACK=0`).
 
-**Recovery update (extension 0.4.0):** deploy the backend changes as well as distributing the new extension ZIP. The backend now splits text when the AI provider rejects an oversized request (HTTP 413, or an explicit “request too large” 429). It splits both slide notes and final merges, with a bounded number of subdivisions; partial final summaries are assembled locally. This avoids repeatedly sending the same oversized prompt but does not remove daily or per-minute API quotas. The extension separately saves known job IDs so interrupted status checks can reconnect without another upload. It cannot recover server-side jobs after the server restarts; durable job storage is still future work.
+**Backend 0.5.0 (compatible with extension 0.4.0):** estimates input size before AI calls, caps output, splits oversized notes/merges/extras without discarding source text, and reuses successful AI replies. A process-wide rolling-window limiter reserves estimated input plus maximum output per provider/model. Docker uses two parallel calls, a 7,200-token/minute budget and 25 requests/minute; these are conservative defaults for the currently configured account, not universal provider limits. Provider 429s remain authoritative because estimates and usage from other clients can differ. Retry-After is honoured up to 120 seconds; longer waits return a clear quota error or try a distinct fallback. A fallback using the same provider/model is not retried as another allowance.
+
+Render Blueprint settings use 90-second request timeouts, two retries and a cooperative 20-minute processing budget (queue time excluded). Extraction, rendering and remote cache operations are not forcibly interrupted by the budget. Watch for dashboard environment overrides when applying `render.yaml` to an existing service; especially replace an old `LLM_MAX_RETRIES=6`. Changes in Docker defaults cannot override an explicitly configured Render environment variable.
+
+Successful AI sections, extras, selected source images and submission/terminal job records are written locally and copied synchronously to the private HF dataset. Restart recovery depends on successful remote writes; failures are logged. Finished jobs can be restored until one hour after completion. Incomplete jobs ask for re-upload and reuse saved sections, rather than pretending a restarted worker is still running. This is a single-process queue, not a distributed durable worker system. API credentials and full uploads are not stored in checkpoints. Source images are retained: review `docs/PRIVACY.md` and use a private dataset.
+
+`INCLUDE_DIAGRAMS=1` and `MAX_DIAGRAM_SLIDES=40` add a numbered original-slide appendix. Visual detection is heuristic and includes some charts/tables; a cap samples across the whole deck. No AI image generator is involved. If a diagram description fails, the PDF warns which slides need checking. Rebuild older summaries to get the new appendix; the pipeline version invalidates earlier result keys once.
+
+For documentation/license-only commits, use `[skip render]` in the commit message to avoid restarting active jobs. For backend updates, finish active jobs before deployment. This release does not change the service's free plan or enable paid AI billing.
 
 Validation commands: `.venv/bin/python -m pytest -q` and `node --test tests/test_extension_*.mjs` (Node 22+ for the test runner's ES module detection). Test the extension with DevTools closed, a Wi-Fi interruption, and a browser restart before sharing broadly.
 

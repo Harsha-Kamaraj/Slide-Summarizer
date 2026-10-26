@@ -20,6 +20,8 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Image,
+    PageBreak,
     KeepTogether,
     Paragraph,
     SimpleDocTemplate,
@@ -28,7 +30,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend import config
+from backend import config, figures
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class Summary:
     # Optional extras (Stage 7)
     exam_questions: list[tuple[str, str]] = field(default_factory=list)  # (question, answer)
     flashcards: list[tuple[str, str]] = field(default_factory=list)  # (front, back)
+    figure_key: str = ""
 
 
 # --- 1. Parse ------------------------------------------------------------
@@ -61,6 +64,10 @@ def parse_summary(markdown: str) -> Summary:
     """Read the fixed-heading Markdown format. Lenient on purpose: small
     models drift on details like bold markers or bullet style."""
     summary = Summary()
+    marker = figures.MARKER.search(markdown)
+    if marker:
+        summary.figure_key = marker.group(1)
+        markdown = figures.MARKER.sub("", markdown)
     section = ""
     overview_lines: list[str] = []
 
@@ -87,7 +94,18 @@ def parse_summary(markdown: str) -> Summary:
             # Models sometimes wrap formulas in backticks; the box is enough.
             unticked = text.strip("`").strip()
             if unticked.lower().startswith("formula:"):
-                topic.points.append("Formula: " + unticked[8:].strip().strip("`"))
+                formula = unticked[8:].strip().strip("`").strip()
+                # Models may fill an optional formula slot with a placeholder.
+                # Omit it even for older cached summaries, keeping real formulas.
+                if _strip_bold(formula).strip().rstrip(".").casefold() not in {
+                    "",
+                    "none",
+                    "n/a",
+                    "not applicable",
+                    "no formula",
+                    "no formulas",
+                }:
+                    topic.points.append("Formula: " + formula)
             elif _is_bullet(line):
                 topic.points.append(text)
             elif _NUMBERED.match(line):
@@ -270,6 +288,43 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
             )
         )
         story.append(cards)
+
+    if summary.figure_key:
+        bundle = figures.load(summary.figure_key)
+        story += [PageBreak(), Paragraph("Original Visual Slides", styles["h2"])]
+        if bundle:
+            story.append(
+                Paragraph(
+                    f"{len(bundle['slides'])} of {bundle['total']} detected visual slides. "
+                    "Original slide images, not AI drawings. Refer to the numbered source slide for context.",
+                    styles["body"],
+                )
+            )
+            for i, slide in enumerate(bundle["slides"]):
+                if i:
+                    story.append(PageBreak())
+                story.append(
+                    Paragraph(_inline(f"Slide {slide['number']}: {slide['title']}"), styles["h3"])
+                )
+                picture = Image(io.BytesIO(slide["png"]))
+                max_height = (175 if slide.get("caption") else 205) * mm
+                scale = min(170 * mm / picture.imageWidth, max_height / picture.imageHeight)
+                picture.drawWidth = picture.imageWidth * scale
+                picture.drawHeight = picture.imageHeight * scale
+                story.append(picture)
+                if slide.get("caption"):
+                    story.append(
+                        Paragraph(
+                            "Slide notes (excerpt): " + _inline(slide["caption"]), styles["body"]
+                        )
+                    )
+        else:
+            story.append(
+                Paragraph(
+                    "Saved slide images are unavailable. Consult the original deck for diagrams.",
+                    styles["body"],
+                )
+            )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

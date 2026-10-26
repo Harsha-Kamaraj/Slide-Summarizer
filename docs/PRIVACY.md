@@ -16,12 +16,16 @@ Slide Summarizer is a Chrome extension that turns lecture slides into a PDF summ
 | Data | Kept? | Why |
 |---|---|---|
 | The slide file you upload | **No.** Deleted right after processing | — |
-| The generated summary text | Yes, in a cache, identified only by a fingerprint (hash) of the file | So the next student who summarizes the same lecture gets it instantly, without another AI request |
+| Summary, questions, flashcards and intermediate AI responses | Yes, in a cache keyed by content, settings and prompt/model fingerprints | Reuse finished work without repeating AI requests |
+| Selected original visual slides | Yes, rendered images and short captions in the cache | Include source diagrams in rebuilt summary PDFs; disable with `INCLUDE_DIAGRAMS=0` |
+| Server job records | Yes: random job number, filename, timestamps, outcome and result | Recover completed downloads after restart and identify interrupted jobs |
 | Your IP address | Only in memory, for the current day, never written to disk | To enforce a daily limit on new summaries per student |
 | 👍/👎 feedback | Yes: the rating, an optional comment you type, and which summary it's about | To improve the summaries |
-| Your name, email, student ID or account | **Never collected** | — |
+| Your PESU account details | Not requested from the browser; names/emails already printed in uploaded slides can appear in source images or generated text | No PESU account integration |
 
 There are no accounts, no tracking, no analytics and no advertising.
+
+When configured, cache entries are copied to a private Hugging Face dataset. They remain until the operator deletes them; the job download expiry (one hour after completion by default) limits API access, not storage retention. Dataset history can retain previous versions. Only hash keys and responses are cached for intermediate AI calls, not API credentials or full request prompts. A failed remote save is logged; recovery after disk loss then depends on which entries reached the dataset. The backend does not keep the full uploaded deck after processing, but selected visual pages can reproduce part of that deck.
 
 ## What the extension stores in your browser
 

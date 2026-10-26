@@ -1,6 +1,7 @@
 This image is slide $number of a lecture titled "$deck_title". Text extracted from the slide: "$slide_text"
 
 Describe the teaching content shown on this slide so a student can revise it without seeing the image:
+- Keep the description compact (about 150 words). Prioritize labels, connections, formulas and facts; do not repeat decorative text.
 - Transcribe all text in the image word for word, including text inside pictures, diagrams and screenshots.
 - For a diagram or flowchart, explain what it shows: the parts, how they connect, and the order of steps.
 - For a table, write it as rows of "a | b | c".
