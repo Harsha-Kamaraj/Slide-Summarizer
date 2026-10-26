@@ -184,3 +184,53 @@ def test_terms_are_appended_after_the_summary(monkeypatch):
     monkeypatch.setattr(summarize.llm, "chat", lambda messages, **kw: next(replies))
     result = summarize.summarize_deck(make_deck(1), mode="short")
     assert result.endswith("## Important Terms\n- **Fact 1**: the fact from topic 1")
+
+
+def test_oversized_notes_are_split_without_losing_source_text(monkeypatch):
+    source = "\n\n".join(f"unique_fact_{i}: " + "detail " * 20 for i in range(12))
+    accepted = []
+
+    def ask(system, prompt, model=None):
+        if len(prompt) > 500:
+            raise summarize.llm.RequestTooLarge("too large")
+        accepted.append(prompt)
+        return prompt
+
+    monkeypatch.setattr(summarize, "_ask", ask)
+    updates = []
+    result = summarize._notes_with_splitting("system", lambda text: text, source, updates.append)
+    assert len(accepted) > 1
+    for i in range(12):
+        assert f"unique_fact_{i}:" in result
+    assert any("smaller sections" in text for text in updates)
+
+
+def test_oversized_final_merge_builds_one_document_preserving_all_parts(monkeypatch):
+    notes = "\n\n".join(f"unique_fact_{i}: " + "detail " * 15 for i in range(8))
+
+    def ask(system, prompt, model=None):
+        text = prompt.split("\nNotes:\n", 1)[1]
+        if len(text) > 450:
+            raise summarize.llm.RequestTooLarge("too large")
+        return f"# Lecture\n## Overview\nThis section.\n## Key Points\n### Topic\n- {text}"
+
+    monkeypatch.setattr(summarize, "_ask", ask)
+    result = summarize._summary_with_splitting(
+        "system", "Lecture", "detailed", notes, lambda _: None
+    )
+    assert summarize.structure_problem(result) is None
+    for i in range(8):
+        assert f"unique_fact_{i}:" in result
+
+
+def test_size_splitting_is_bounded_when_provider_rejects_everything(monkeypatch):
+    calls = []
+
+    def reject(*args, **kwargs):
+        calls.append(1)
+        raise summarize.llm.RequestTooLarge("too large")
+
+    monkeypatch.setattr(summarize, "_ask", reject)
+    with pytest.raises(summarize.llm.RequestTooLarge, match="after splitting"):
+        summarize._notes_with_splitting("system", lambda text: text, "x" * 20000, lambda _: None)
+    assert len(calls) <= 7

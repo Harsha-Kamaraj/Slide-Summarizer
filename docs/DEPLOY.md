@@ -70,6 +70,10 @@ What the free tier means in practice:
 - Cached summaries survive sleeps and restarts (Hugging Face dataset). Feedback and daily-limit counts reset on restart.
 - Tables ruled with plain lines (rare in PowerPoint exports) aren't read as tables there (`SLOW_TABLE_FALLBACK=0`).
 
+**Recovery update (extension 0.4.0):** deploy the backend changes as well as distributing the new extension ZIP. The backend now splits text when the AI provider rejects an oversized request (HTTP 413, or an explicit “request too large” 429). It splits both slide notes and final merges, with a bounded number of subdivisions; partial final summaries are assembled locally. This avoids repeatedly sending the same oversized prompt but does not remove daily or per-minute API quotas. The extension separately saves known job IDs so interrupted status checks can reconnect without another upload. It cannot recover server-side jobs after the server restarts; durable job storage is still future work.
+
+Validation commands: `.venv/bin/python -m pytest -q` and `node --test tests/test_extension_*.mjs` (Node 22+ for the test runner's ES module detection). Test the extension with DevTools closed, a Wi-Fi interruption, and a browser restart before sharing broadly.
+
 ### Oracle Cloud (always on, card for verification)
 
 On a fresh Ubuntu 24.04 VM (Ampere A1, **2 OCPU / 12 GB** to stay within the free limit), with ports 80/443 opened in the VCN security list:

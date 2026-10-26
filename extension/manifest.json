@@ -1,17 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Slide Summarizer",
-  "version": "0.2.0",
+  "version": "0.4.0",
+  "minimum_chrome_version": "120",
   "description": "Turn PESU Academy lecture slides into a detailed PDF summary.",
   "permissions": [
     "downloads",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.pesuacademy.com/*",
     "https://pesuacademy.com/*",
     "https://files.pesuacademy.com/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://slide-summarizer.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js",

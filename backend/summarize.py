@@ -124,14 +124,17 @@ def summarize_deck(
             chunk[0].number,
             chunk[-1].number,
         )
-        prompt = chunk_prompt.substitute(
-            first=chunk[0].number,
-            last=chunk[-1].number,
-            deck_title=deck.title,
-            detail_instructions=NOTES_INSTRUCTIONS[mode],
-            slides=format_slides(chunk),
-        )
-        notes = _ask(system, prompt, model=config.NOTES_MODEL)
+
+        def prompt_for(text):
+            return chunk_prompt.substitute(
+                first=chunk[0].number,
+                last=chunk[-1].number,
+                deck_title=deck.title,
+                detail_instructions=NOTES_INSTRUCTIONS[mode],
+                slides=text,
+            )
+
+        notes = _notes_with_splitting(system, prompt_for, format_slides(chunk), report)
         with done_lock:
             done += 1
             if done < len(chunks):
@@ -146,10 +149,80 @@ def summarize_deck(
     # Reduce: merge all chunk notes into one structured document.
     logger.info("Merging %d sections into the final summary", len(notes))
     report("Putting the summary together…")
+    summary = _summary_with_splitting(system, deck.title, mode, "\n\n".join(notes), report)
+    if terms:
+        lines = [f"- **{term}**: {definition}" for term, definition in terms]
+        summary = summary.rstrip() + "\n\n## Important Terms\n" + "\n".join(lines)
+    return summary
+
+
+def _split_oversized_text(text: str, depth: int) -> tuple[str, str]:
+    """Split without truncation, preferring paragraph/word boundaries.
+
+    Provider token counts vary by model. React to a size rejection rather
+    than assuming that a fixed slide count or character estimate will fit.
+    Bound recursion in case even the fixed prompt exceeds a provider limit.
+    """
+    if depth >= 6 or len(text) < 200:
+        raise llm.RequestTooLarge(
+            "The AI service still rejects this text after splitting it into smaller sections. "
+            "Try a smaller deck or ask the administrator to check the model limits."
+        )
+    middle = len(text) // 2
+    cut = text.rfind("\n\n", middle // 2, middle)
+    if cut < 0:
+        cut = text.rfind(" ", middle // 2, middle)
+    if cut < 0:
+        cut = middle
+    return text[:cut], text[cut:]
+
+
+def _notes_with_splitting(system, prompt_for, text, report, depth=0):
+    try:
+        return _ask(system, prompt_for(text), model=config.NOTES_MODEL)
+    except llm.RequestTooLarge:
+        left, right = _split_oversized_text(text, depth)
+        report("Processing smaller sections to fit the AI limit…")
+        return "\n\n".join(
+            _notes_with_splitting(system, prompt_for, part, report, depth + 1)
+            for part in (left, right)
+        )
+
+
+def _summary_with_splitting(system, title, mode, notes, report, depth=0):
+    try:
+        return _final_summary(system, title, mode, notes)
+    except llm.RequestTooLarge:
+        left, right = _split_oversized_text(notes, depth)
+        report("Building the summary in smaller sections to fit the AI limit…")
+        parts = [
+            _summary_with_splitting(system, title, mode, part, report, depth + 1)
+            for part in (left, right)
+        ]
+        # Don't feed all the results back into another oversized model call.
+        # Assemble their overviews and topics locally, retaining every part.
+        overviews, topics = [], []
+        for part in parts:
+            if structure_problem(part):
+                raise llm.LLMError("The AI returned an invalid summary section. Please try again.")
+            overview, points = re.split(r"(?m)^## Key Points\s*$", part, maxsplit=1)
+            overviews.append(re.split(r"(?m)^## Overview\s*$", overview, maxsplit=1)[1].strip())
+            topics.append(points.strip())
+        heading = next(line for line in parts[0].splitlines() if line.startswith("# "))
+        return (
+            heading
+            + "\n\n## Overview\n"
+            + "\n\n".join(overviews)
+            + "\n\n## Key Points\n"
+            + "\n\n".join(topics)
+        )
+
+
+def _final_summary(system, title, mode, notes):
     final_prompt = load_prompt("final_summary").substitute(
-        deck_title=deck.title,
+        deck_title=title,
         length_instructions=LENGTH_INSTRUCTIONS[mode],
-        notes="\n\n".join(notes),
+        notes=notes,
     )
     summary = _ask(system, final_prompt)
 
@@ -170,9 +243,6 @@ def summarize_deck(
         problem = structure_problem(summary)
         if problem:
             logger.warning("Summary structure still invalid (%s); using it anyway", problem)
-    if terms:
-        lines = [f"- **{term}**: {definition}" for term, definition in terms]
-        summary = summary.rstrip() + "\n\n## Important Terms\n" + "\n".join(lines)
     return summary
 
 

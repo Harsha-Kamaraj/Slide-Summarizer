@@ -1,6 +1,7 @@
-// Where the summarizer backend runs. localhost for development; in Stage 8
-// this becomes the hosted URL (still overridable from the popup settings).
-export const DEFAULT_BACKEND_URL = "http://localhost:8000";
+// Where the summarizer backend runs: the hosted server by default (Render,
+// docs/DEPLOY.md). For development, set http://localhost:8000 under ⚙ in the
+// popup.
+export const DEFAULT_BACKEND_URL = "https://slide-summarizer.onrender.com";
 
 // Upload limit, matching MAX_UPLOAD_MB in backend/config.py.
 export const MAX_UPLOAD_MB = 50;

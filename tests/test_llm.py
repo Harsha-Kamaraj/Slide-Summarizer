@@ -146,6 +146,29 @@ def test_request_too_large_is_not_retried(fake_server, monkeypatch):
     assert calls == ["call"]  # no waiting, no retries
 
 
+def test_413_requests_are_split_by_caller_without_retrying_or_leaking_account_id(
+    fake_server, with_fallback
+):
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.host)
+        return httpx.Response(
+            413,
+            json={
+                "error": {
+                    "message": "Request too large for model in organization org_private. Limit 8000, Requested 8072"
+                }
+            },
+        )
+
+    fake_server(handler)
+    with pytest.raises(llm.RequestTooLarge) as error:
+        llm.chat([{"role": "user", "content": "oversized notes"}])
+    assert "org_private" not in str(error.value)
+    assert calls == ["primary"]
+
+
 def test_max_tokens_is_sent_when_given(fake_server):
     bodies = []
     fake_server(lambda request: bodies.append(request.read()) or ok_reply("ok"))

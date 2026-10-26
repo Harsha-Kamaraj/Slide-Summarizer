@@ -1,6 +1,6 @@
 # Slide Summarizer — Privacy Policy
 
-_Last updated: 25 October 2026_
+_Last updated: 26 October 2026_
 
 Slide Summarizer is a Chrome extension that turns lecture slides into a PDF summary. This page explains exactly what data it handles.
 
@@ -25,7 +25,9 @@ There are no accounts, no tracking, no analytics and no advertising.
 
 ## What the extension stores in your browser
 
-Your settings (summary length, extras, backend address) are saved with Chrome's sync storage, so they follow your Chrome profile. Nothing else is stored.
+Your settings (summary length, extras, backend address) are saved with Chrome's sync storage, so they follow your Chrome profile.
+
+To reconnect after an interruption, the extension also saves job numbers, filenames, status/error messages, backend addresses, download IDs, and fingerprints identifying the selected file/link and settings in Chrome's local storage. These job records stay on that browser profile and are not synced to your other devices. The extension does not save the original slide file, signed download links, or PESU cookies in these records. Removing the extension clears its local records; downloaded PDFs remain in your Downloads folder.
 
 ## Permissions the extension asks for
 
@@ -33,7 +35,8 @@ Your settings (summary length, extras, backend address) are saved with Chrome's 
 - **files.pesuacademy.com**, to download the slide file you chose.
 - **The Slide Summarizer server**, to upload the file and get the summary back.
 - **Downloads**, to save the summary PDF.
-- **Storage**, to remember your settings.
+- **Storage**, to remember your settings and reconnect to saved jobs.
+- **Alarms**, to check saved jobs periodically while Chrome is running, even when the popup is closed.
 
 ## Contact
 

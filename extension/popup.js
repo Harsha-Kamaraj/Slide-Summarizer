@@ -19,6 +19,9 @@ const message = document.getElementById("message");
 const settingsToggle = document.getElementById("settingsToggle");
 const settingsPanel = document.getElementById("settings");
 const backendInput = document.getElementById("backendUrl");
+const resumeButton = document.getElementById("resumeSummary");
+let watchVersion = 0;
+let savedTaskKey = null;
 
 let selectedFile = null;
 
@@ -32,6 +35,11 @@ async function init() {
   }
   backendInput.value = settings.backendUrl;
   checkBackend(settings.backendUrl);
+  const { lastPopupTask } = await chrome.storage.local.get("lastPopupTask");
+  if (lastPopupTask) {
+    const result = await chrome.runtime.sendMessage({ type: "get-task", key: lastPopupTask });
+    if (result?.task) watchTask(result.task);
+  }
 }
 
 // --- Server check (a warning appears only if something is wrong) ----------
@@ -79,6 +87,8 @@ function selectFile(file) {
     return;
   }
   selectedFile = file;
+  watchVersion++;
+  resumeButton.hidden = true;
   fileLabel.textContent = file.name;
   dropzone.classList.add("has-file");
   summarizeButton.disabled = false;
@@ -124,6 +134,8 @@ summarizeButton.addEventListener("click", async () => {
     return;
   }
   summarizeButton.disabled = true;
+  watchVersion++;
+  resumeButton.hidden = true;
   showMessage("", "Summarizing… you can close this popup; the PDF will appear in Downloads.", {
     busy: true,
   });
@@ -140,10 +152,48 @@ summarizeButton.addEventListener("click", async () => {
     .catch((error) => ({ ok: false, error: error.message }));
 
   summarizeButton.disabled = false;
-  if (result?.ok) {
-    showMessage("", `Saved to Downloads${result.cached ? " · from cache" : ""}.`);
+  if (result?.ok && result.task) {
+    watchTask(result.task);
   } else {
     showMessage("error", result?.error || "Something went wrong.");
+  }
+});
+
+function watchTask(initialTask) {
+  const version = ++watchVersion;
+  savedTaskKey = initialTask.key;
+  async function update(task) {
+    if (version !== watchVersion) return;
+    const busy = ["starting", "active", "reconnecting", "downloading"].includes(task.state);
+    summarizeButton.disabled = busy || !selectedFile;
+    resumeButton.hidden = task.state !== "paused";
+    showMessage(busy || task.state === "done" ? "" : "error",
+      busy || task.state === "done" ? task.progress : task.error, { busy });
+    if (!busy) return;
+    setTimeout(async () => {
+      if (version !== watchVersion) return;
+      try {
+        const result = await chrome.runtime.sendMessage({ type: "get-task", key: task.key });
+        if (!result?.ok || !result.task) throw new Error(result?.error || "Saved job not found.");
+        update(result.task);
+      } catch {
+        showMessage("error", "Close and reopen the popup to reconnect to your saved summary.");
+      }
+    }, 3000);
+  }
+  update(initialTask);
+}
+
+resumeButton.addEventListener("click", async () => {
+  resumeButton.disabled = true;
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "resume-task", key: savedTaskKey });
+    if (!result?.ok) throw new Error(result?.error || "Couldn't reconnect.");
+    watchTask(result.task);
+  } catch (error) {
+    showMessage("error", error.message);
+  } finally {
+    resumeButton.disabled = false;
   }
 });
 

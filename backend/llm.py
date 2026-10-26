@@ -35,6 +35,10 @@ class ProviderUnavailable(LLMError):
     (Unlike e.g. a missing model, which is a setup problem to report.)"""
 
 
+class RequestTooLarge(ProviderUnavailable):
+    """The caller must split its input; waiting won't make this request fit."""
+
+
 @dataclass(frozen=True)
 class Provider:
     name: str
@@ -95,6 +99,10 @@ def chat(
             payload["max_tokens"] = max_tokens
         try:
             data = _post_with_retries(provider, payload)
+        except RequestTooLarge:
+            # Let the summarization pipeline split the source without
+            # discarding content or switching model quality unnecessarily.
+            raise
         except ProviderUnavailable as exc:
             logger.warning("%s LLM provider unavailable: %s", provider.name, exc)
             error = exc
@@ -150,12 +158,19 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
             continue
 
         status = response.status_code
-        if status == 429 and "request too large" in response.text.lower():
+        if status == 413 or (status == 429 and "request too large" in response.text.lower()):
             # Over a per-minute limit in a *single* request: waiting can't
-            # help, so don't spend retries on it. Another provider might fit.
-            raise ProviderUnavailable(
-                "This request is too large for the AI service's rate limits: "
-                f"{response.text[:200]}"
+            # help, so don't spend retries on it. Avoid exposing account IDs
+            # from the provider's response in a student's error message.
+            logger.warning(
+                "LLM request too large (provider=%s, model=%s, status=%d)",
+                provider.name,
+                model,
+                status,
+            )
+            raise RequestTooLarge(
+                "This request is too large for the AI service's limits. "
+                "The text needs to be processed in smaller sections."
             )
         if status == 429:
             # Rate limited: wait as long as the provider asks (within reason).

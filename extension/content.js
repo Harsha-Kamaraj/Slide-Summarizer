@@ -15,6 +15,8 @@ const MARK = "data-slide-summarizer"; // set on links that already have a button
 // Buttons waiting on a summary, by request id, so progress updates from the
 // background worker reach the right button.
 const pending = new Map();
+const watches = new WeakMap();
+const ACTIVE_TASKS = ["starting", "active", "reconnecting", "downloading"];
 
 // Icons are fixed markup (no user data), so setting them as HTML is safe.
 const ICONS = {
@@ -50,13 +52,18 @@ function addButtons() {
     });
     // After the link, not inside it: a click inside would also open PESU's viewer.
     link.after(button);
+    const url = new URL(`/Academy/a/referenceMeterials/downloadslidecoursedoc/${id}`, location.origin);
+    chrome.runtime.sendMessage({ type: "get-url-task", url: url.href }).then((result) => {
+      if (result?.task && !watches.has(button)) watchTask(button, result.task);
+    }).catch(() => {});
   }
 }
 
 async function summarize(button, id, title) {
   const url = new URL(`/Academy/a/referenceMeterials/downloadslidecoursedoc/${id}`, location.origin);
   const requestId = crypto.randomUUID();
-  setState(button, "busy", "Uploading…");
+  watches.set(button, Symbol()); // invalidate any earlier watcher
+  setState(button, "busy", "Checking saved summary…");
   button.title = "";
   // Re-summarizing: remove the previous run's feedback or error note.
   const old = button.nextElementSibling;
@@ -68,14 +75,48 @@ async function summarize(button, id, title) {
     .catch((error) => ({ ok: false, error: error.message }));
   pending.delete(requestId);
 
-  if (result?.ok) {
-    setState(button, "done", result.cached ? "Saved · instant" : "Saved to Downloads");
-    if (result.summaryId) button.after(feedbackButtons(result.summaryId));
+  if (result?.ok && result.task) {
+    watchTask(button, result.task);
   } else {
     setState(button, "error", "Retry");
     button.title = result?.error || "Unknown error";
     button.after(note(button.title));
   }
+}
+
+function watchTask(button, initialTask) {
+  const token = Symbol();
+  watches.set(button, token);
+  async function update(task) {
+    if (!button.isConnected || watches.get(button) !== token) return;
+    const old = button.nextElementSibling;
+    if (old?.classList.contains("ss-feedback")) old.remove();
+    if (task.state === "done") {
+      setState(button, "done", task.progress);
+      if (task.summaryId) button.after(feedbackButtons(task.summaryId));
+      return;
+    }
+    if (!ACTIVE_TASKS.includes(task.state)) {
+      setState(button, "error", "Retry");
+      button.title = task.error;
+      button.after(note(task.error));
+      return;
+    }
+    setState(button, "busy", task.progress);
+    setTimeout(async () => {
+      if (!button.isConnected || watches.get(button) !== token) return;
+      try {
+        const result = await chrome.runtime.sendMessage({ type: "get-task", key: task.key });
+        if (!result?.ok || !result.task) throw new Error(result?.error || "Saved summary was not found.");
+        update(result.task);
+      } catch {
+        if (watches.get(button) !== token) return;
+        setState(button, "error", "Retry");
+        button.after(note("Couldn't contact the extension. Refresh this page to reconnect to the saved job."));
+      }
+    }, 3000);
+  }
+  update(initialTask);
 }
 
 function note(text) {
