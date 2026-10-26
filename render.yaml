@@ -42,3 +42,6 @@ services:
         sync: false
       - key: DAILY_LIMIT
         value: "10"
+      # 0.1 CPU: skip the slow line-table detector (decision #31)
+      - key: SLOW_TABLE_FALLBACK
+        value: "0"

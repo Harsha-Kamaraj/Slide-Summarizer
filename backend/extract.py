@@ -223,21 +223,43 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
     column a value is in, and it miscounts. Detected tables are instead
     written as "a | b | c" rows, like .pptx tables.
     """
-    # find_tables() is by far the slowest step (~26 s/page on a 0.1-CPU free
-    # host), so only run it on pages with enough ruling lines to hold a grid.
-    tables = page.find_tables().tables if _has_grid_lines(page) else []
-    table_rects = [pymupdf.Rect(t.bbox) for t in tables]
+    tables = _page_tables(page)
 
     # Text blocks outside the tables, in reading order.
     outside = []
     for block in page.get_text("dict")["blocks"]:
         x0, y0, x1, y1 = block["bbox"]
         centre = pymupdf.Point((x0 + x1) / 2, (y0 + y1) / 2)
-        if block["type"] == 0 and not any(centre in rect for rect in table_rects):
+        if block["type"] == 0 and not any(centre in rect for rect, _ in tables):
             outside.append(_block_text(block))
     lines = _clean_lines("\n".join(outside))
 
-    for table in tables:
+    for _, rows in tables:
+        rows = [row for row in rows if any(row)]
+        # Double borders between cells can be detected as extra, always-empty
+        # columns; drop those.
+        keep = [c for c in range(len(rows[0]) if rows else 0) if any(row[c] for row in rows)]
+        lines += [" | ".join(row[c] for c in keep) for row in rows]
+    return lines
+
+
+Table = tuple[pymupdf.Rect, list[list[str]]]  # (area on the page, rows of cell text)
+
+
+def _page_tables(page: pymupdf.Page) -> list[Table]:
+    """Tables on the page, as cell text by row.
+
+    Fast path: PowerPoint exports (like the college's PDFs) draw every table
+    cell as its own rectangle, so a grid of touching rectangles is a table;
+    that takes milliseconds. PyMuPDF's general find_tables() also handles
+    tables drawn with plain lines, but costs ~26 s/page on a 0.1-CPU free
+    host, so it's only the fallback for pages with a grid of drawn lines.
+    """
+    tables = _rectangle_tables(page)
+    if tables or not config.SLOW_TABLE_FALLBACK or not _has_line_grid(page):
+        return tables
+    found = []
+    for table in page.find_tables().tables:
         # Read each cell by its position: the table's own text extraction
         # scrambles letter-spaced text ("s y" for "sky") in some exports.
         rows = [
@@ -247,18 +269,119 @@ def _page_lines(page: pymupdf.Page) -> list[str]:
             ]
             for row in table.rows
         ]
-        rows = [row for row in rows if any(row)]
-        # Double borders between cells can be detected as extra, always-empty
-        # columns; drop those.
-        keep = [c for c in range(len(rows[0]) if rows else 0) if any(row[c] for row in rows)]
-        lines += [" | ".join(row[c] for c in keep) for row in rows]
-    return lines
+        found.append((pymupdf.Rect(table.bbox), rows))
+    return found
 
 
-def _has_grid_lines(page: pymupdf.Page) -> bool:
-    """Cheap pre-check (~1 ms/page): does the page draw at least 3 horizontal
-    and 3 vertical lines (or cell rectangles), as a ruled table must? Boxes
-    in diagrams can pass too; that only costs an unnecessary find_tables()."""
+_EDGE_TOLERANCE = 2.5  # points: edges this close count as touching or aligned
+
+
+def _rectangle_tables(page: pymupdf.Page) -> list[Table]:
+    words = page.get_text("words")  # (x0, y0, x1, y1, text, block, line, word)
+    tables = []
+    for cells in _touching_groups(_cell_rectangles(page)):
+        rows = _distinct(cell.y0 for cell in cells)
+        cols = _distinct(cell.x0 for cell in cells)
+        # A table is a (nearly) full grid; scattered boxes in a layout aren't.
+        if len(cells) < 4 or len(rows) < 2 or len(cols) < 2:
+            continue
+        if len(cells) < 0.75 * len(rows) * len(cols):
+            continue
+        grid = [["" for _ in cols] for _ in rows]
+        for cell in cells:
+            r = min(range(len(rows)), key=lambda i: abs(rows[i] - cell.y0))
+            c = min(range(len(cols)), key=lambda i: abs(cols[i] - cell.x0))
+            grid[r][c] = _words_in(cell, words)
+        area = pymupdf.Rect(
+            min(cell.x0 for cell in cells),
+            min(cell.y0 for cell in cells),
+            max(cell.x1 for cell in cells),
+            max(cell.y1 for cell in cells),
+        )
+        tables.append((area, grid))
+    return tables
+
+
+def _cell_rectangles(page: pymupdf.Page) -> list[pymupdf.Rect]:
+    """Drawn rectangles that could be table cells, minus overlays."""
+    page_area = page.rect.width * page.rect.height
+    candidates = [
+        pymupdf.Rect(item[1])
+        for drawing in page.get_drawings()
+        for item in drawing["items"]
+        if item[0] == "re"
+    ]
+    candidates = [
+        r
+        for r in candidates
+        if r.width > 12 and r.height > 8 and r.width * r.height < page_area / 2
+    ]
+    # A rectangle covering smaller ones (a row highlight, or the same cell
+    # drawn twice) isn't a cell. Going smallest first keeps the real cells
+    # and skips the bigger box laid over them.
+    cells: list[pymupdf.Rect] = []
+    for rect in sorted(candidates, key=lambda r: r.width * r.height):
+        if not any(_area(rect & cell) > 0.5 * _area(cell) for cell in cells):
+            cells.append(rect)
+    return cells
+
+
+def _touching_groups(cells: list[pymupdf.Rect]) -> list[list[pymupdf.Rect]]:
+    """Group rectangles that share an edge with a neighbour (flood fill)."""
+    groups, seen = [], set()
+    for start in range(len(cells)):
+        if start in seen:
+            continue
+        seen.add(start)
+        stack, group = [start], []
+        while stack:
+            i = stack.pop()
+            group.append(cells[i])
+            for j in range(len(cells)):
+                if j not in seen and _share_edge(cells[i], cells[j]):
+                    seen.add(j)
+                    stack.append(j)
+        groups.append(group)
+    return groups
+
+
+def _share_edge(a: pymupdf.Rect, b: pymupdf.Rect) -> bool:
+    tol = _EDGE_TOLERANCE
+    x_overlap = min(a.x1, b.x1) - max(a.x0, b.x0)
+    y_overlap = min(a.y1, b.y1) - max(a.y0, b.y0)
+    side_by_side = (abs(a.x1 - b.x0) < tol or abs(b.x1 - a.x0) < tol) and y_overlap > tol
+    stacked = (abs(a.y1 - b.y0) < tol or abs(b.y1 - a.y0) < tol) and x_overlap > tol
+    return side_by_side or stacked
+
+
+def _distinct(values) -> list[float]:
+    """Sorted coordinates, merging ones within the edge tolerance."""
+    out: list[float] = []
+    for value in sorted(values):
+        if not out or value - out[-1] > _EDGE_TOLERANCE:
+            out.append(value)
+    return out
+
+
+def _words_in(cell: pymupdf.Rect, words: list) -> str:
+    """The words whose centre lies in the cell, in reading order."""
+    inside = [
+        w
+        for w in words
+        if cell.x0 - 1 <= (w[0] + w[2]) / 2 <= cell.x1 + 1
+        and cell.y0 - 1 <= (w[1] + w[3]) / 2 <= cell.y1 + 1
+    ]
+    inside.sort(key=lambda w: (w[5], w[6], w[7]))  # block, line, word number
+    return " ".join(w[4] for w in inside)
+
+
+def _area(rect: pymupdf.Rect) -> float:
+    return 0.0 if rect.is_empty else rect.width * rect.height
+
+
+def _has_line_grid(page: pymupdf.Page) -> bool:
+    """Cheap check (~1 ms/page): at least 3 horizontal and 3 vertical drawn
+    lines, as a table ruled with lines (not cell rectangles) needs."""
     horizontal = vertical = 0
     for drawing in page.get_drawings():
         for item in drawing["items"]:
@@ -274,9 +397,6 @@ def _has_grid_lines(page: pymupdf.Page) -> bool:
                     horizontal += 1
                 elif rect.height > 10 and rect.width < 2:
                     vertical += 1
-                elif rect.width > 20 and rect.height > 8:  # a cell: two edges each way
-                    horizontal += 2
-                    vertical += 2
     return horizontal >= 3 and vertical >= 3
 
 

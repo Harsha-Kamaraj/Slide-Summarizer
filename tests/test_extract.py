@@ -186,3 +186,72 @@ def test_pages_without_ruling_lines_skip_table_detection(tmp_path, monkeypatch):
 
     extract_deck(path)
     assert calls == []  # the expensive detector never ran
+
+
+def _cell_grid_pdf(tmp_path, overlay=False):
+    """A 3x3 table drawn PowerPoint-style: one rectangle per cell."""
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 60), "Training data", fontsize=18)
+    values = [["sky", "water", "enjoy"], ["sunny", "warm", "yes"], ["sunny", "cool", "yes"]]
+    for r, row in enumerate(values):
+        for c, value in enumerate(row):
+            cell = pymupdf.Rect(72 + 120 * c, 100 + 30 * r, 192 + 120 * c, 130 + 30 * r)
+            page.draw_rect(cell, color=(0, 0, 0), fill=(0.9, 0.9, 1))
+            page.insert_text((cell.x0 + 5, cell.y0 + 20), value, fontsize=11)
+    if overlay:  # a highlight box laid over the whole second row
+        page.draw_rect(pymupdf.Rect(70, 128, 434, 162), color=(1, 0, 0), width=2)
+    path = tmp_path / "cells.pdf"
+    doc.save(path)
+    return path
+
+
+def test_cell_rectangle_tables_are_read_without_the_slow_detector(tmp_path, monkeypatch):
+    import pymupdf
+
+    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda *a, **k: pytest.fail("slow path used"))
+    text = extract_deck(_cell_grid_pdf(tmp_path)).slides[0].text
+    assert text.splitlines()[-3:] == [
+        "sky | water | enjoy",
+        "sunny | warm | yes",
+        "sunny | cool | yes",
+    ]
+
+
+def test_highlight_box_over_a_row_is_not_a_cell(tmp_path):
+    text = extract_deck(_cell_grid_pdf(tmp_path, overlay=True)).slides[0].text
+    assert "sunny | warm | yes" in text
+
+
+def test_scattered_boxes_are_not_a_table(tmp_path):
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    # Two separate rows of boxes far apart: a layout, not a grid.
+    for i, (x, y) in enumerate([(72, 100), (192, 100), (72, 400), (300, 600), (420, 600)]):
+        page.draw_rect(pymupdf.Rect(x, y, x + 120, y + 30), color=(0, 0, 0))
+        page.insert_text((x + 5, y + 20), f"box {i}", fontsize=11)
+    path = tmp_path / "layout.pdf"
+    doc.save(path)
+    assert " | " not in extract_deck(path).slides[0].text
+
+
+def test_slow_fallback_can_be_turned_off(tmp_path, monkeypatch):
+    import pymupdf
+
+    from backend import config
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for i in range(4):  # a grid ruled with plain lines
+        page.draw_line((72, 100 + 30 * i), (432, 100 + 30 * i))
+        page.draw_line((72 + 120 * i, 100), (72 + 120 * i, 190))
+    path = tmp_path / "ruled.pdf"
+    doc.save(path)
+
+    monkeypatch.setattr(config, "SLOW_TABLE_FALLBACK", False)
+    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda *a, **k: pytest.fail("slow path used"))
+    extract_deck(path)  # no failure: the slow detector never ran

@@ -58,6 +58,11 @@ IMAGE_HEAVY_WORD_THRESHOLD: int = int(os.getenv("IMAGE_HEAVY_WORD_THRESHOLD", "1
 
 # --- Upload limits ---
 MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "50"))
+# Tables drawn as cell rectangles (PowerPoint exports, like the college's
+# PDFs) are read by a fast reader. Tables ruled with plain lines need PyMuPDF's
+# find_tables(), which costs ~26 s/page on a 0.1-CPU free host: turn it off
+# there with SLOW_TABLE_FALLBACK=0.
+SLOW_TABLE_FALLBACK: bool = os.getenv("SLOW_TABLE_FALLBACK", "1") == "1"
 MAX_SLIDES: int = int(os.getenv("MAX_SLIDES", "150"))
 ALLOWED_EXTENSIONS: tuple[str, ...] = (".pptx", ".ppt", ".pdf")
 
