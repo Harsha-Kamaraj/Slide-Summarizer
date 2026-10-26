@@ -29,3 +29,6 @@ eval/sample_pages/
 # Runtime data (feedback)
 .data/
 
+
+# Built extension zips
+dist/
