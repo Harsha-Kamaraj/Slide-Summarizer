@@ -36,44 +36,55 @@ To protect against a full Groq outage instead, point the fallback at another pro
 
 **Never put keys in the code or the extension.** They go in the host's secret settings only.
 
-## 2. Deploy the backend (Hugging Face Spaces, free)
+## 2. Deploy the backend
 
-Hugging Face Spaces runs Docker containers on free CPU hardware. The container runs as user 1000 on port 7860, which the `Dockerfile` already handles.
+Three tested options (October 2026). Hugging Face Docker Spaces now need a paid PRO plan, and Google Cloud Run needs billing enabled, so neither is listed.
 
-1. Create a Space at <https://huggingface.co/new-space> and choose **Docker** as the SDK.
-2. The Space's `README.md` needs this block at the top (Hugging Face reads it to know how to run the app):
-   ```yaml
-   ---
-   title: Slide Summarizer
-   sdk: docker
-   app_port: 7860
-   ---
-   ```
-3. Put `Dockerfile` and the `backend/` folder from this repo into the Space repository and push. Hugging Face builds the image automatically.
-4. In the Space's **Settings → Variables and secrets**, add:
+| Host | Card? | Always on? | Notes |
+|---|---|---|---|
+| **Render free** (recommended) | No | Sleeps after 15 min idle; ~50 s to wake | 0.1 CPU / 512 MB; fine thanks to the fast table reader (decision #31). Disk is wiped on sleep, so the cache lives in a private Hugging Face dataset |
+| **Oracle Cloud Always Free** | Yes (verification only) | Yes, but idle servers may be reclaimed | 2 OCPU / 12 GB; `deploy/oracle/` sets up Caddy HTTPS + the backend |
+| **Your laptop + a tunnel** | No | Only while the laptop is on | e.g. Tailscale Funnel for a stable public HTTPS address |
 
-   | Name | Type | Example |
-   |---|---|---|
-   | `LLM_API_KEY` | **Secret** | your provider key |
-   | `LLM_BASE_URL` | Variable | `https://api.groq.com/openai/v1` |
-   | `TEXT_MODEL` | Variable | a text model from the provider |
-   | `VISION_MODEL` | Variable | a vision model, or set `VISION_ENABLED=0` |
-   | `FALLBACK_BASE_URL`, `FALLBACK_MODEL` | Variable | optional second provider |
-   | `FALLBACK_API_KEY` | **Secret** | optional |
-   | `DAILY_LIMIT` | Variable | new summaries per student per day (image default: 10) |
+### Render (free, no card)
 
-5. Open `https://<user>-<space>.hf.space/health`. It should return `{"status":"ok","ollama":true}`. (The field is named `ollama` for historical reasons; it means "the LLM provider is reachable".)
+`render.yaml` describes the service, so Render can set it up as a Blueprint.
 
-**Know the trade-offs of the free tier:**
-- **Disk is wiped on restart,** so the summary cache and feedback start empty again. Attach a storage bucket and set `CACHE_DIR=/data/cache` and `FEEDBACK_FILE=/data/feedback.jsonl` to keep them.
-- **Free Spaces sleep when unused.** The first request after a sleep waits while the container starts.
-- **One container:** jobs, rate-limit counts and the in-flight job list live in memory, which is fine for one container.
+1. **Cache storage (one time):** on Hugging Face, create a private dataset (e.g. `<user>/slide-summarizer-cache`), then a **fine-grained** access token with write access to **only that dataset**. If the server is ever compromised, that token can't touch anything else.
+2. **Sign up** at <https://render.com> with GitHub, and give Render access to this repository.
+3. **New → Blueprint →** pick the repository. Render reads `render.yaml` and shows one free web service, `slide-summarizer`.
+4. Render asks for the values marked `sync: false`, which are the secrets. Paste them into Render, never into the code:
 
-Any Docker host works the same way: Render, Google Cloud Run or a VM. Run the same image with the same environment variables, and set `PORT` if the host requires a specific port.
+   | Name | Value |
+   |---|---|
+   | `LLM_API_KEY` | your Groq key |
+   | `FALLBACK_API_KEY` | the same Groq key (the fallback is a second Groq model) |
+   | `HF_TOKEN` | the fine-grained Hugging Face token from step 1 |
+
+5. **Apply.** The first build takes ~10 minutes (LibreOffice is large). Later pushes to `main` redeploy automatically.
+6. Open `https://<service>.onrender.com/health`. It should return `{"status":"ok","ollama":true}`. (`ollama` is a historical name; it means "the AI provider is reachable".)
+
+What the free tier means in practice:
+- The first student after 15 quiet minutes waits ~50 s while the server wakes up. After that it's normal speed.
+- Reading a deck takes ~4–5 s at 0.1 CPU, and the AI time is Groq's (1–3 min for a new deck).
+- Cached summaries survive sleeps and restarts (Hugging Face dataset). Feedback and daily-limit counts reset on restart.
+- Tables ruled with plain lines (rare in PowerPoint exports) aren't read as tables there (`SLOW_TABLE_FALLBACK=0`).
+
+### Oracle Cloud (always on, card for verification)
+
+On a fresh Ubuntu 24.04 VM (Ampere A1, **2 OCPU / 12 GB** to stay within the free limit), with ports 80/443 opened in the VCN security list:
+
+```bash
+git clone https://github.com/Harsha-Kamaraj/Slide-Summarizer.git && cd Slide-Summarizer
+bash deploy/oracle/setup.sh     # installs Docker, opens the firewall, asks for the Groq key, starts HTTPS
+bash deploy/oracle/update.sh    # later: deploy the latest code
+```
+
+The address is `https://<ip-with-dashes>.sslip.io`, with a free certificate from Caddy. Free servers that stay idle for 7 days may be reclaimed by Oracle, so add an uptime monitor and restart the server from the console if it stops.
 
 ## 3. Point the extension at the server
 
-- **For testing:** open the extension popup → **Settings** → enter `https://<user>-<space>.hf.space` → **Save**. Chrome asks for permission to contact that address.
+- **For testing:** open the extension popup → **⚙** → enter the server address (e.g. `https://<service>.onrender.com`) → **Save**. Chrome asks for permission to contact that address.
 - **For everyone:** set `DEFAULT_BACKEND_URL` in `extension/config.js` to the hosted URL, bump `version` in `manifest.json`, and reload or republish.
 
 ## 4. Share it
