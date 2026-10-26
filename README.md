@@ -88,3 +88,7 @@ All settings are env vars read in `backend/config.py`, for example:
 | `VISION_MODEL`, `VISION_ENABLED` | `gemma4:12b`, `1` | Image-slide descriptions |
 | `LLM_PARALLEL_CALLS` | `1` | Concurrent chunk calls (raise for hosted APIs) |
 | `CACHE_DIR` | `.cache/summaries` | Cached summaries |
+
+## License
+
+Copyright (c) 2026 Harsha K. Licensed under the [MIT License](LICENSE).
