@@ -161,7 +161,12 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
     url = f"{provider.base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {provider.api_key}"}
     model = payload["model"]
-    attempts = config.LLM_MAX_RETRIES + 1
+    retries = config.LLM_MAX_RETRIES
+    if config.LLM_TOKENS_PER_MINUTE or config.LLM_REQUESTS_PER_MINUTE:
+        # Existing Render services may retain an old LLM_MAX_RETRIES=6 even
+        # after Docker defaults change. Quota-paced hosting has its own cap.
+        retries = min(retries, config.HOSTED_MAX_RETRIES)
+    attempts = max(0, retries) + 1
 
     for attempt in range(1, attempts + 1):
         execution.remaining()

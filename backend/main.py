@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Slide Summarizer", version="0.5.0")
+app = FastAPI(title="Slide Summarizer", version="0.5.1")
 
 Mode = Literal["short", "detailed"]
 Extra = Literal["exam_questions", "flashcards"]

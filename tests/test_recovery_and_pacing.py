@@ -133,3 +133,16 @@ def test_long_provider_cooldown_fails_promptly_without_sleep(monkeypatch):
     monkeypatch.setattr(llm, "_sleep", lambda _: pytest.fail("Should not wait an hour"))
     with pytest.raises(llm.ProviderUnavailable, match="try again later"):
         llm.chat([{"role": "user", "content": "test"}])
+
+
+def test_hosted_retry_cap_overrides_legacy_dashboard_setting(monkeypatch):
+    calls = []
+    monkeypatch.setattr(config, "LLM_TOKENS_PER_MINUTE", 7200)
+    monkeypatch.setattr(config, "LLM_MAX_RETRIES", 6)
+    monkeypatch.setattr(config, "HOSTED_MAX_RETRIES", 2)
+    monkeypatch.setattr(pacing.limiter, "acquire", lambda *a: None)
+    monkeypatch.setattr(llm, "_sleep", lambda _: None)
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: calls.append(1) or httpx.Response(503))
+    with pytest.raises(llm.ProviderUnavailable):
+        llm.chat([{"role": "user", "content": "test retry cap"}])
+    assert len(calls) == 3
