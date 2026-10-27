@@ -51,7 +51,8 @@ export class JobTracker {
     // Wait for an already-running check to settle before changing its state.
     if (this.checks.has(seed.key)) await this.checks.get(seed.key);
     const previous = await this.storage.get(seed.key);
-    if (previous?.jobId && !["failed", "expired"].includes(previous.state)) {
+    const refreshCompleted = seed.refreshCompleted && previous?.state === "done";
+    if (previous?.jobId && !refreshCompleted && !["failed", "expired"].includes(previous.state)) {
       // Retry and repeated clicks resume the known job, with no PDF transfer.
       if (previous.state === "done") delete previous.downloadId; // explicit re-download
       previous.state = "active";
@@ -61,7 +62,8 @@ export class JobTracker {
       return this.save(previous);
     }
 
-    const task = { ...seed, state: "starting", progress: "Preparing summary…", error: "" };
+    const task = { key: seed.key, filename: seed.filename, backendUrl: seed.backendUrl,
+      state: "starting", progress: "Preparing summary…", error: "" };
     await this.save(task);
     try {
       const jobId = await submit(async (progress) => {

@@ -47,3 +47,13 @@ New jobs save their server job number and filename locally in Chrome. Reopening 
 Backend 0.6.0 puts diagrams directly under their matching topic. Simple flows are redrawn from the slides; complex diagrams use a cropped original to preserve their notation. The caption identifies the source slide and whether it was redrawn. There is no full-slide appendix. Up to six candidates are checked by default, so some topics may have no diagram. Existing cached text and extras are reused when you upload the same file to update the old appendix. Extension 0.4.0 works without reinstalling.
 
 **Privacy:** your PESU password never leaves your browser. The slide file is deleted from the server right after it's summarized. See [PRIVACY.md](PRIVACY.md).
+
+### Extension 0.4.1: checking saved summaries
+If the button remains on **Checking saved summary…**, reload the extension at
+`chrome://extensions`, then refresh the PESU page. Version 0.4.1 shows a recovery
+message if the worker never replies, instead of leaving the button spinning.
+Clicking Summarize again on a **completed** deck now transfers the file to the
+current backend so it can upgrade old diagrams while reusing cached text/extras.
+Clicks on an active or interrupted connection still reconnect to the saved job.
+For a ZIP installation, extract `dist/slide-summarizer-0.4.1.zip` and load its
+`slide-summarizer` folder; reloading an older extracted folder does not update it.

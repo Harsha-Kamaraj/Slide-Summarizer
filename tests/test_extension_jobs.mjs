@@ -126,3 +126,25 @@ test("mode, extras, source and backend each separate saved jobs", async () => {
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(await taskKey("slide-1", { ...settings, backendUrl: settings.backendUrl + "/" }), key);
 });
+
+test("explicitly summarizing a completed deck submits once for current backend layout", async () => {
+  const { tracker, records, calls, submit } = setup();
+  records.set(key, { ...seed, jobId: "old-job", state: "done", downloadId: 77 });
+  const fresh = { ...seed, refreshCompleted: true };
+  await Promise.all([tracker.start(fresh, submit), tracker.start(fresh, submit)]);
+  assert.equal(calls.uploads, 1);
+  assert.equal((await tracker.get(key)).jobId, "original-job");
+  assert.equal((await tracker.get(key)).downloadId, undefined);
+  // Another click while active still reconnects; never starts duplicate AI work.
+  await tracker.start(fresh, submit);
+  assert.equal(calls.uploads, 1);
+});
+
+test("explicit resume of a finished download retains its job", async () => {
+  const { tracker, records, calls, submit } = setup();
+  records.set(key, { ...seed, jobId: "old-job", state: "done", downloadId: 77 });
+  const task = await tracker.start(seed, submit);
+  assert.equal(task.jobId, "old-job");
+  assert.equal(calls.uploads, 0);
+  assert.equal(task.downloadId, undefined);
+});

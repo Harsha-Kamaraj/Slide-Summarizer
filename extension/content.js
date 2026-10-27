@@ -18,6 +18,21 @@ const pending = new Map();
 const watches = new WeakMap();
 const ACTIVE_TASKS = ["starting", "active", "reconnecting", "downloading"];
 
+function sendToWorker(message, timeoutMs = 15000) {
+  // A missing worker reply must not leave a disabled button forever. This
+  // times out the UI only: never cancel or automatically repeat an upload.
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(
+      "The extension did not respond. Reload Slide Summarizer in chrome://extensions, " +
+      "then refresh this PESU page. A submitted job may still be running; its saved job number will be reused."
+    )), timeoutMs);
+    Promise.resolve().then(() => chrome.runtime.sendMessage(message)).then(
+      (result) => { clearTimeout(timer); resolve(result); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 // Icons are fixed markup (no user data), so setting them as HTML is safe.
 const ICONS = {
   idle: '<svg class="ss-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 2l2 6.5L19.5 10 13 12l-2 6.5L9 12 2.5 10 9 8.5z"/><path d="M19 14l1 2.6 2.6 1-2.6 1L19 21.2l-1-2.6-2.6-1 2.6-1z"/></svg>',
@@ -70,8 +85,8 @@ async function summarize(button, id, title) {
   if (old?.classList.contains("ss-feedback")) old.remove();
   pending.set(requestId, button);
 
-  const result = await chrome.runtime
-    .sendMessage({ type: "summarize-url", url: url.href, title, requestId })
+  const result = await sendToWorker(
+    { type: "summarize-url", url: url.href, title, requestId }, 180000)
     .catch((error) => ({ ok: false, error: error.message }));
   pending.delete(requestId);
 
@@ -106,7 +121,7 @@ function watchTask(button, initialTask) {
     setTimeout(async () => {
       if (!button.isConnected || watches.get(button) !== token) return;
       try {
-        const result = await chrome.runtime.sendMessage({ type: "get-task", key: task.key });
+        const result = await sendToWorker({ type: "get-task", key: task.key });
         if (!result?.ok || !result.task) throw new Error(result?.error || "Saved summary was not found.");
         update(result.task);
       } catch {

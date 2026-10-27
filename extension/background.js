@@ -130,7 +130,9 @@ async function summarizeFromFile({ name, dataBase64, mimeType }) {
 
 async function startSummary(key, filename, settings, loadBlob, notify) {
   await ensureAlarm();
-  const task = await tracker.start({ key, filename, backendUrl: settings.backendUrl }, async (progress) => {
+  // Explicitly summarizing a finished deck must reach the current backend
+  // pipeline. It reuses cached text/extras while upgrading old diagrams.
+  const task = await tracker.start({ key, filename, backendUrl: settings.backendUrl, refreshCompleted: true }, async (progress) => {
     await progress("Connecting to the summarizer…");
     notify("Connecting to the summarizer…");
     // Waking a sleeping host is a safe GET. Do this before transferring the
