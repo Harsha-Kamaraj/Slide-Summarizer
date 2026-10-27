@@ -8,7 +8,7 @@ Slide Summarizer is a Chrome extension that turns lecture slides into a PDF summ
 
 1. **The extension downloads the slides inside your browser**, using your existing PESU Academy session. Your PESU login, password and cookies are **never sent to our server**. They stay in your browser.
 2. **The slide file is uploaded to the Slide Summarizer server** to be summarized. The server keeps it only while it's being processed and **deletes it as soon as the summary is made**.
-3. **The text of the slides (and images of diagram-heavy slides) is sent to an AI service** that writes the summary. In development this runs on the developer's own computer; the hosted version uses a third-party AI provider, whose own privacy policy applies to that request.
+3. **The text of the slides (and images of diagram-heavy slides and selected topic-diagram candidates) is sent to an AI service** that writes the summary. In development this runs on the developer's own computer; the hosted version uses a third-party AI provider, whose own privacy policy applies to that request.
 4. **The finished summary is downloaded to your computer.**
 
 ## What the server keeps
@@ -17,7 +17,7 @@ Slide Summarizer is a Chrome extension that turns lecture slides into a PDF summ
 |---|---|---|
 | The slide file you upload | **No.** Deleted right after processing | — |
 | Summary, questions, flashcards and intermediate AI responses | Yes, in a cache keyed by content, settings and prompt/model fingerprints | Reuse finished work without repeating AI requests |
-| Selected original visual slides | Yes, rendered images and short captions in the cache | Include source diagrams in rebuilt summary PDFs; disable with `INCLUDE_DIAGRAMS=0` |
+| Diagram data | Yes, cropped source images, validated graph descriptions and captions in the cache; older full-slide cache entries may remain | Place diagrams with their summary topics; disable with `INCLUDE_DIAGRAMS=0` |
 | Server job records | Yes: random job number, filename, timestamps, outcome and result | Recover completed downloads after restart and identify interrupted jobs |
 | Your IP address | Only in memory, for the current day, never written to disk | To enforce a daily limit on new summaries per student |
 | 👍/👎 feedback | Yes: the rating, an optional comment you type, and which summary it's about | To improve the summaries |

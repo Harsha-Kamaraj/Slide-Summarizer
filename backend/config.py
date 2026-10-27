@@ -47,6 +47,7 @@ NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", "1200"))
 JOB_MAX_SECONDS: int = int(os.getenv("JOB_MAX_SECONDS", "1200"))
 INCLUDE_DIAGRAMS: bool = os.getenv("INCLUDE_DIAGRAMS", "1") == "1"
 MAX_DIAGRAM_SLIDES: int = int(os.getenv("MAX_DIAGRAM_SLIDES", "40"))
+MAX_INLINE_DIAGRAMS: int = int(os.getenv("MAX_INLINE_DIAGRAMS", "6"))
 
 # Optional fallback provider, used when the main one is rate-limited, down or
 # timing out (e.g. a second free tier). Leave FALLBACK_BASE_URL empty to disable.

@@ -82,8 +82,8 @@ def summarize_file(
         if heavy:
             report(f"Reading {min(heavy, config.MAX_VISION_SLIDES)} diagram slides…")
             describe_image_slides(deck, path, progress=report)
-    figure_marker = figures.prepare(deck, path, report)
     summary = summarize_deck(deck, mode=mode, progress=report)
+    figure_marker = figures.prepare(deck, path, report, parse_summary(summary).topics)
     if deck.vision_failures:
         warning = (
             "Image analysis was unavailable for source slides "

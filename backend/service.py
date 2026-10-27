@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from backend import cache, config, execution
+from backend import cache, config, execution, figures
 from backend.extras import generate_extra
 from backend.summarize import summarize_file
 
@@ -43,6 +43,18 @@ def _run(path, content_hash, mode, extras, progress):
             generated = True
         else:
             progress("Reusing saved summary…")
+            if config.INCLUDE_DIAGRAMS and figures.needs_upgrade(summary):
+                from backend.extract import extract_deck
+                from backend.pdf_builder import parse_summary
+
+                # Keep good summary/extras text. Upgrade only the old appendix.
+                clean = figures.MARKER.sub("", summary).rstrip()
+                marker = figures.prepare(
+                    extract_deck(path), path, progress, parse_summary(clean).topics
+                )
+                summary = clean + ("\n\n" + marker if marker else "")
+                cache.put(key, summary)
+                generated = True
 
     sections = []
     for extra in extras:

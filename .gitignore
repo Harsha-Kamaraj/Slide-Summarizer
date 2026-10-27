@@ -32,3 +32,6 @@ eval/sample_pages/
 
 # Built extension zips
 dist/
+
+# Generated review PDFs may contain private lecture content
+output/

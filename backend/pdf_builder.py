@@ -21,7 +21,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
-    PageBreak,
     KeepTogether,
     Paragraph,
     SimpleDocTemplate,
@@ -30,7 +29,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend import config, figures
+from backend import config, diagrams, figures
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +86,9 @@ def parse_summary(markdown: str) -> Summary:
             if not summary.topics:  # content before any ### heading
                 summary.topics.append(Topic(heading="Key points"))
             topic = summary.topics[-1]
+            if re.match(r"^#{4,6} ", line):
+                topic.points.append("Heading: " + re.sub(r"^#+\s+", "", line))
+                continue
             if line.startswith("|"):
                 _add_table_row(topic, line)
                 continue
@@ -217,6 +219,14 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
             Paragraph(_inline(summary.overview), styles["body"]),
         ]
 
+    bundle = (
+        figures.load(summary.figure_key) if summary.figure_key and config.INCLUDE_DIAGRAMS else None
+    )
+    topic_figures = {}
+    if bundle and bundle.get("version") == figures.VERSION:
+        for figure in bundle["slides"]:
+            topic_figures.setdefault(figure.get("topic"), []).append(figure)
+
     if summary.topics:
         story.append(Paragraph("Key Points", styles["h2"]))
         for topic in summary.topics:
@@ -226,8 +236,15 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
             points = [_point(p, styles) for p in topic.points]
             # Keep a topic heading on the same page as its explanation and
             # first point, so a heading never sits alone at a page bottom.
-            story.append(KeepTogether(head + points[:1]))
-            story += points[1:]
+            visual = topic_figures.pop(topic.heading, [])[:1]
+            if visual:
+                # Keep the topic introduction with its diagram. Let subsequent
+                # explanation flow normally rather than forcing a separate page.
+                story.append(KeepTogether(head + points[:1] + _figure(visual[0], styles, regular)))
+                story += points[1:]
+            else:
+                story.append(KeepTogether(head + points[:1]))
+                story += points[1:]
 
     if summary.terms:
         story.append(Paragraph("Important Terms", styles["h2"]))
@@ -289,42 +306,18 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
         )
         story.append(cards)
 
-    if summary.figure_key:
-        bundle = figures.load(summary.figure_key)
-        story += [PageBreak(), Paragraph("Original Visual Slides", styles["h2"])]
-        if bundle:
-            story.append(
-                Paragraph(
-                    f"{len(bundle['slides'])} of {bundle['total']} detected visual slides. "
-                    "Original slide images, not AI drawings. Refer to the numbered source slide for context.",
-                    styles["body"],
-                )
+    if (
+        summary.figure_key
+        and config.INCLUDE_DIAGRAMS
+        and (not bundle or bundle.get("version") != figures.VERSION or bundle.get("incomplete"))
+    ):
+        story.append(
+            Paragraph(
+                "Some diagrams are unavailable in this saved result. Refer to the source slides; "
+                "summarize the same file again to update its diagrams.",
+                styles["answer"],
             )
-            for i, slide in enumerate(bundle["slides"]):
-                if i:
-                    story.append(PageBreak())
-                story.append(
-                    Paragraph(_inline(f"Slide {slide['number']}: {slide['title']}"), styles["h3"])
-                )
-                picture = Image(io.BytesIO(slide["png"]))
-                max_height = (175 if slide.get("caption") else 205) * mm
-                scale = min(170 * mm / picture.imageWidth, max_height / picture.imageHeight)
-                picture.drawWidth = picture.imageWidth * scale
-                picture.drawHeight = picture.imageHeight * scale
-                story.append(picture)
-                if slide.get("caption"):
-                    story.append(
-                        Paragraph(
-                            "Slide notes (excerpt): " + _inline(slide["caption"]), styles["body"]
-                        )
-                    )
-        else:
-            story.append(
-                Paragraph(
-                    "Saved slide images are unavailable. Consult the original deck for diagrams.",
-                    styles["body"],
-                )
-            )
+        )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -340,6 +333,28 @@ def build_pdf(summary: Summary, source_name: str = "") -> bytes:
     return buffer.getvalue()
 
 
+def _figure(figure, styles, font):
+    if figure.get("kind") == "graph":
+        visual = diagrams.drawing(figure["graph"], font=font, width=166 * mm)
+        label = "Redrawn from source slide"
+    elif figure.get("kind") == "crop" and figure.get("png"):
+        visual = Image(io.BytesIO(figure["png"]))
+        scale = min(166 * mm / visual.imageWidth, 95 * mm / visual.imageHeight)
+        visual.drawWidth, visual.drawHeight = visual.imageWidth * scale, visual.imageHeight * scale
+        label = "Diagram from source slide"
+    else:
+        return []
+    caption = f"{label} {figure['number']}"
+    if figure.get("caption"):
+        caption += " — " + figure["caption"]
+    return [
+        Spacer(1, 3 * mm),
+        visual,
+        Paragraph(_inline(caption), styles["answer"]),
+        Spacer(1, 2 * mm),
+    ]
+
+
 def _inline(text: str) -> str:
     """Make model text safe for reportlab Paragraphs, which parse a mini-HTML.
     Escape first (a formula like "<P,T,E>" would otherwise be read as a tag),
@@ -350,6 +365,8 @@ def _inline(text: str) -> str:
 
 def _point(text: str, styles: dict[str, ParagraphStyle]):
     """A bullet ("•"), numbered step ("1."), boxed formula or table."""
+    if text.startswith("Heading: "):
+        return Paragraph(_inline(text[9:]), styles["h3"])
     if text.startswith("Formula: "):
         return _formula_box(text[len("Formula: ") :], styles["formula"])
     if text.startswith("Table: "):

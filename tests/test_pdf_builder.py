@@ -201,3 +201,23 @@ def test_markdown_tables_become_real_tables_in_place():
         text = page.get_text()
         assert "| Red |" not in text  # not dumped as raw Markdown
         assert page.find_tables().tables  # drawn as an actual grid
+
+
+def test_subheadings_stay_in_order_with_their_points():
+    markdown = "# Example\n## Key Points\n### Features\n#### First feature\n- First explanation\n#### Second feature\n- Second explanation"
+    parsed = parse_summary(markdown)
+    assert parsed.topics[0].points == [
+        "Heading: First feature",
+        "First explanation",
+        "Heading: Second feature",
+        "Second explanation",
+    ]
+    with pymupdf.open(stream=build_pdf(parsed), filetype="pdf") as doc:
+        text = doc[0].get_text()
+        assert (
+            text.index("First feature")
+            < text.index("First explanation")
+            < text.index("Second feature")
+            < text.index("Second explanation")
+        )
+        assert "####" not in text

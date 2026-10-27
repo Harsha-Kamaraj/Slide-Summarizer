@@ -36,6 +36,10 @@ class Slide:
         return bool(
             re.match(r"^(thank\s+you|acknowledg[e]?ments?|references|credits)\b", self.title, re.I)
             or re.match(r"^(anchor:|slides adapted from)\s", self.text.strip(), re.I)
+            or (
+                self.number == 1
+                and re.search(r"acknowledg[e]?ments?|department of|@\w+\.", self.text, re.I)
+            )
         )
 
     @property
