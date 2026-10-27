@@ -57,3 +57,17 @@ current backend so it can upgrade old diagrams while reusing cached text/extras.
 Clicks on an active or interrupted connection still reconnect to the saved job.
 For a ZIP installation, extract `dist/slide-summarizer-0.4.1.zip` and load its
 `slide-summarizer` folder; reloading an older extracted folder does not update it.
+
+### Cancel one summary (extension 0.4.2, backend 0.6.1)
+After upload, click **Cancel** next to the active PESU summary, or **Cancel summary**
+in the extension popup for a file uploaded there. This cancels only that job.
+Queued jobs are removed immediately. Running jobs show **Stopping after the current
+operation…** until an in-flight AI request, extraction, or cache write returns;
+then they show **Cancelled**. Already-sent AI requests cannot be recalled or their
+usage refunded. Successful cached sections remain available on an explicit retry.
+Closing a tab is not cancellation. If cancellation cannot be confirmed, reconnect
+and check the job rather than assuming it stopped. Cancel is available once the
+upload has returned its job number; it is not an upload-abort or download-cancel control.
+
+Update/reload the extension at `chrome://extensions` and refresh PESU to get the
+new buttons. ZIP installations must use the newly extracted 0.4.2 folder.

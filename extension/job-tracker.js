@@ -1,7 +1,7 @@
 // The durable record lives in chrome.storage.local, not in the service
 // worker's memory. Only coalescing locks are kept in memory.
 export const TASK_PREFIX = "summary-task:";
-export const ACTIVE_STATES = ["starting", "active", "reconnecting", "downloading"];
+export const ACTIVE_STATES = ["starting", "active", "reconnecting", "downloading", "cancelling"];
 
 export async function taskKey(source, settings) {
   const identity = JSON.stringify([
@@ -13,10 +13,11 @@ export async function taskKey(source, settings) {
 }
 
 export class JobTracker {
-  constructor({ storage, readJob, download, getDownload, onChange = () => {} }) {
-    Object.assign(this, { storage, readJob, download, getDownload, onChange });
+  constructor({ storage, readJob, cancelJob, download, getDownload, onChange = () => {} }) {
+    Object.assign(this, { storage, readJob, cancelJob, download, getDownload, onChange });
     this.starts = new Map();
     this.checks = new Map();
+    this.cancels = new Map();
   }
 
   async save(task) {
@@ -48,11 +49,13 @@ export class JobTracker {
   }
 
   async startOnce(seed, submit) {
+    if (this.cancels.has(seed.key)) await this.cancels.get(seed.key);
     // Wait for an already-running check to settle before changing its state.
     if (this.checks.has(seed.key)) await this.checks.get(seed.key);
     const previous = await this.storage.get(seed.key);
     const refreshCompleted = seed.refreshCompleted && previous?.state === "done";
-    if (previous?.jobId && !refreshCompleted && !["failed", "expired"].includes(previous.state)) {
+    if (previous?.state === "cancelling") return previous;
+    if (previous?.jobId && !refreshCompleted && !["failed", "expired", "cancelled"].includes(previous.state)) {
       // Retry and repeated clicks resume the known job, with no PDF transfer.
       if (previous.state === "done") delete previous.downloadId; // explicit re-download
       previous.state = "active";
@@ -85,6 +88,7 @@ export class JobTracker {
   }
 
   check(key, force = false) {
+    if (this.cancels.has(key)) return this.cancels.get(key);
     if (this.checks.has(key)) return this.checks.get(key);
     const promise = this.checkOnce(key, force).finally(() => this.checks.delete(key));
     this.checks.set(key, promise);
@@ -119,10 +123,14 @@ export class JobTracker {
 
       const url = `${task.backendUrl}/jobs/${task.jobId}`;
       const status = await this.readJob(url, "json", progress);
+      if (this.cancels.has(key)) return task;
       task.error = "";
       if (["queued", "running"].includes(status.status)) {
         task.state = "active";
         task.progress = status.progress || "Processing summary…";
+      } else if (["cancelling", "cancelled"].includes(status.status)) {
+        task.state = status.status;
+        task.progress = status.progress;
       } else if (status.status === "error") {
         task.state = "failed";
         task.error = status.error || "The server could not finish this summary.";
@@ -133,6 +141,7 @@ export class JobTracker {
         task.progress = "Downloading summary…";
         await this.save(task);
         const blob = await this.readJob(`${url}/pdf`, "blob", progress);
+        if (this.cancels.has(key)) return task;
         task.downloadId = await this.download(blob, task.filename);
         task.state = "downloading";
         task.progress = "Saving PDF to Downloads…";
@@ -158,5 +167,33 @@ export class JobTracker {
     const tasks = await this.storage.all();
     await Promise.allSettled(tasks.filter((task) => ACTIVE_STATES.includes(task.state))
       .map((task) => this.check(task.key, true)));
+  }
+
+  cancel(key) {
+    if (this.cancels.has(key)) return this.cancels.get(key);
+    const promise = this.cancelOnce(key).finally(() => this.cancels.delete(key));
+    this.cancels.set(key, promise);
+    return promise;
+  }
+
+  async cancelOnce(key) {
+    const task = await this.get(key);
+    if (!task?.jobId) throw new Error("Wait for the upload to finish before cancelling.");
+    if (["done", "failed", "expired", "cancelled"].includes(task.state)) return task;
+    // Send promptly even if a status read is slow. Then settle that read so
+    // its old response cannot overwrite the cancellation acknowledgement.
+    const status = await this.cancelJob(`${task.backendUrl}/jobs/${task.jobId}/cancel`);
+    if (this.checks.has(key)) await this.checks.get(key);
+    if (["cancelling", "cancelled"].includes(status.status)) {
+      task.state = status.status;
+      task.progress = status.progress;
+      task.error = "";
+      delete task.downloadId;
+      return this.save(task);
+    }
+    // Completion won the race: let normal polling retrieve the result.
+    task.state = "active";
+    task.lastChecked = 0;
+    return this.save(task);
   }
 }

@@ -16,7 +16,35 @@ const MARK = "data-slide-summarizer"; // set on links that already have a button
 // background worker reach the right button.
 const pending = new Map();
 const watches = new WeakMap();
-const ACTIVE_TASKS = ["starting", "active", "reconnecting", "downloading"];
+const ACTIVE_TASKS = ["starting", "active", "reconnecting", "downloading", "cancelling"];
+const cancelButtons = new WeakMap();
+
+function updateCancel(button, task) {
+  cancelButtons.get(button)?.remove();
+  cancelButtons.delete(button);
+  if (!task?.jobId || !["active", "reconnecting", "paused"].includes(task.state)) return;
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "ss-btn ss-error";
+  cancel.textContent = "Cancel";
+  cancel.title = "Stop this summary; keep completed cached sections";
+  cancel.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    watches.set(button, Symbol());
+    cancel.disabled = true;
+    cancel.textContent = "Cancelling…";
+    try {
+      const result = await sendToWorker({ type: "cancel-task", key: task.key }, 180000);
+      if (!result?.ok) throw new Error(result?.error || "Could not confirm cancellation.");
+      watchTask(button, result.task);
+    } catch (error) {
+      watchTask(button, { ...task, state: "paused", error: "Cancellation was not confirmed. " + error.message });
+    }
+  });
+  button.after(cancel);
+  cancelButtons.set(button, cancel);
+}
 
 function sendToWorker(message, timeoutMs = 15000) {
   // A missing worker reply must not leave a disabled button forever. This
@@ -78,6 +106,7 @@ async function summarize(button, id, title) {
   const url = new URL(`/Academy/a/referenceMeterials/downloadslidecoursedoc/${id}`, location.origin);
   const requestId = crypto.randomUUID();
   watches.set(button, Symbol()); // invalidate any earlier watcher
+  updateCancel(button, null);
   setState(button, "busy", "Checking saved summary…");
   button.title = "";
   // Re-summarizing: remove the previous run's feedback or error note.
@@ -104,6 +133,7 @@ function watchTask(button, initialTask) {
   watches.set(button, token);
   async function update(task) {
     if (!button.isConnected || watches.get(button) !== token) return;
+    updateCancel(button, null);
     const old = button.nextElementSibling;
     if (old?.classList.contains("ss-feedback")) old.remove();
     if (task.state === "done") {
@@ -111,13 +141,20 @@ function watchTask(button, initialTask) {
       if (task.summaryId) button.after(feedbackButtons(task.summaryId));
       return;
     }
+    if (task.state === "cancelled") {
+      setState(button, "idle", "Summarize again");
+      button.after(note(task.progress));
+      return;
+    }
     if (!ACTIVE_TASKS.includes(task.state)) {
       setState(button, "error", "Retry");
       button.title = task.error;
       button.after(note(task.error));
+      updateCancel(button, task);
       return;
     }
     setState(button, "busy", task.progress);
+    updateCancel(button, task);
     setTimeout(async () => {
       if (!button.isConnected || watches.get(button) !== token) return;
       try {

@@ -186,3 +186,16 @@ The full-slide appendix repeated cover slides and prose, and separated diagrams 
 
 ## 35. Refresh completed results without duplicating active jobs
 The extension previously treated a click on a completed deck as a request to download the old job again. This bypassed backend diagram upgrades. Version 0.4.1 explicitly refreshes completed decks through a new upload; the backend reuses its content cache. Active/paused jobs and explicit download-resume actions retain their existing job ID. The content script also bounds worker-response waits (three minutes for startup/upload, fifteen seconds for local status reads), giving a reload instruction without automatically resubmitting a possibly received upload. The screenshot's health-only logs do not establish why its worker reply stalled; the watchdog prevents an indefinite UI state without claiming that diagnosis.
+
+## 36. Cancel individual jobs cooperatively
+Backend 0.6.1 accepts idempotent POST /jobs/{job_id}/cancel, using the same random
+128-bit job ID capability as status/PDF access. A queued Future is cancelled and
+its upload removed immediately. Running jobs receive a per-job Event inherited
+by section threads through ContextVars. Checkpoints and interruptible pacing/retry
+waits prevent further AI stages; an in-flight synchronous operation must return
+before the worker is released. Cancellation and terminal publication are serialized
+so completion cannot overwrite an accepted cancellation. Cached sections are kept;
+cancelled terminal records survive restart like other outcomes. Extension 0.4.2
+adds PESU and popup controls, polls cancelling jobs, suppresses stale status/download
+responses during cancellation, and requires explicit resubmission after cancellation.
+No queue-wide restart, AI model change, or cache invalidation is needed for use.

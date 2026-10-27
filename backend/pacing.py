@@ -59,7 +59,7 @@ class Limiter:
                     events.append((now, tokens))
                     return
             execution.report(f"Waiting for AI allowance ({math.ceil(wait)}s); saved work is kept…")
-            self.sleep(min(wait, 5, execution.remaining()))
+            execution.sleep(min(wait, 5, execution.remaining()), self.sleep)
 
 
 limiter = Limiter()

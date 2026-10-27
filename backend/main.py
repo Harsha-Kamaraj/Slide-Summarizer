@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Slide Summarizer", version="0.6.0")
+app = FastAPI(title="Slide Summarizer", version="0.6.1")
 
 Mode = Literal["short", "detailed"]
 Extra = Literal["exam_questions", "flashcards"]
@@ -156,6 +156,15 @@ def job_pdf(job_id: str) -> Response:
     return _pdf_response(
         job.markdown, job.filename, "HIT" if job.from_cache else "MISS", job.summary_id
     )
+
+
+@app.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict:
+    # The unguessable job ID is the same capability used for status/download.
+    job = jobs.cancel(job_id)
+    if job is None:
+        raise HTTPException(404, "Unknown or expired job.")
+    return {"status": job.status, "progress": job.progress}
 
 
 def _get_job(job_id: str) -> jobs.Job:

@@ -33,9 +33,11 @@ def _run(path, content_hash, mode, extras, progress):
     """Return (markdown, from_cache). from_cache is True only if nothing had
     to be generated."""
     generated = False
+    execution.checkpoint()
 
     key = cache.cache_key(content_hash, mode)
     with cache.lock(key):
+        execution.checkpoint()
         summary = cache.get(key)
         if summary is None:
             summary = summarize_file(path, mode=mode, progress=progress)
@@ -61,6 +63,7 @@ def _run(path, content_hash, mode, extras, progress):
         execution.remaining()
         key = cache.cache_key(content_hash, mode, extra)
         with cache.lock(key):
+            execution.checkpoint()
             section = cache.get(key)
             if section is None:
                 progress(f"Writing {extra.replace('_', ' ')}…")

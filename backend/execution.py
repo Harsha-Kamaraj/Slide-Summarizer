@@ -7,6 +7,36 @@ from contextvars import ContextVar, copy_context
 _progress = ContextVar("progress", default=lambda message: None)
 _deadline = ContextVar("deadline", default=None)
 _phase = ContextVar("phase", default="")
+_cancel = ContextVar("cancel", default=None)
+
+
+class Cancelled(Exception):
+    pass
+
+
+@contextmanager
+def cancellable(event):
+    token = _cancel.set(event)
+    try:
+        checkpoint()
+        yield
+    finally:
+        _cancel.reset(token)
+
+
+def checkpoint():
+    event = _cancel.get()
+    if event is not None and event.is_set():
+        raise Cancelled("Cancelled. Completed cached sections are kept.")
+
+
+def sleep(seconds, sleeper=time.sleep):
+    event = _cancel.get()
+    if event is None:
+        sleeper(seconds)
+    else:
+        event.wait(seconds)
+        checkpoint()
 
 
 class DeadlineExceeded(Exception):
@@ -25,6 +55,7 @@ def scope(progress, seconds):
 
 
 def report(message):
+    checkpoint()
     label = _phase.get()
     _progress.get()(f"{label}: {message}" if label else message)
 
@@ -39,6 +70,7 @@ def phase(label):
 
 
 def remaining():
+    checkpoint()
     deadline = _deadline.get()
     if deadline is None:
         return float("inf")

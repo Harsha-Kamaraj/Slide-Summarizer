@@ -20,6 +20,7 @@ const settingsToggle = document.getElementById("settingsToggle");
 const settingsPanel = document.getElementById("settings");
 const backendInput = document.getElementById("backendUrl");
 const resumeButton = document.getElementById("resumeSummary");
+const cancelButton = document.getElementById("cancelSummary");
 let watchVersion = 0;
 let savedTaskKey = null;
 
@@ -89,6 +90,7 @@ function selectFile(file) {
   selectedFile = file;
   watchVersion++;
   resumeButton.hidden = true;
+  cancelButton.hidden = true;
   fileLabel.textContent = file.name;
   dropzone.classList.add("has-file");
   summarizeButton.disabled = false;
@@ -136,6 +138,7 @@ summarizeButton.addEventListener("click", async () => {
   summarizeButton.disabled = true;
   watchVersion++;
   resumeButton.hidden = true;
+  cancelButton.hidden = true;
   showMessage("", "Summarizing… you can close this popup; the PDF will appear in Downloads.", {
     busy: true,
   });
@@ -164,11 +167,12 @@ function watchTask(initialTask) {
   savedTaskKey = initialTask.key;
   async function update(task) {
     if (version !== watchVersion) return;
-    const busy = ["starting", "active", "reconnecting", "downloading"].includes(task.state);
+    const busy = ["starting", "active", "reconnecting", "downloading", "cancelling"].includes(task.state);
+    cancelButton.hidden = !task.jobId || !["active", "reconnecting", "paused"].includes(task.state);
     summarizeButton.disabled = busy || !selectedFile;
     resumeButton.hidden = task.state !== "paused";
-    showMessage(busy || task.state === "done" ? "" : "error",
-      busy || task.state === "done" ? task.progress : task.error, { busy });
+    const normal = busy || ["done", "cancelled"].includes(task.state);
+    showMessage(normal ? "" : "error", normal ? task.progress : task.error, { busy });
     if (!busy) return;
     setTimeout(async () => {
       if (version !== watchVersion) return;
@@ -194,6 +198,22 @@ resumeButton.addEventListener("click", async () => {
     showMessage("error", error.message);
   } finally {
     resumeButton.disabled = false;
+  }
+});
+
+cancelButton.addEventListener("click", async () => {
+  watchVersion++;
+  cancelButton.disabled = true;
+  showMessage("", "Requesting cancellation…", { busy: true });
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "cancel-task", key: savedTaskKey });
+    if (!result?.ok) throw new Error(result?.error || "Could not confirm cancellation.");
+    watchTask(result.task);
+  } catch (error) {
+    showMessage("error", "Cancellation was not confirmed. " + error.message);
+    resumeButton.hidden = false;
+  } finally {
+    cancelButton.disabled = false;
   }
 });
 

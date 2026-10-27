@@ -148,3 +148,46 @@ test("explicit resume of a finished download retains its job", async () => {
   assert.equal(calls.uploads, 0);
   assert.equal(task.downloadId, undefined);
 });
+
+test("cancel targets one job, survives worker restart, and allows explicit retry", async () => {
+  const { tracker, options, submit, calls } = setup();
+  const urls = [];
+  tracker.cancelJob = async (url) => { urls.push(url); return {status: 'cancelling', progress: 'Stopping…'}; };
+  await tracker.start(seed, submit);
+  assert.equal((await tracker.cancel(key)).state, 'cancelling');
+  assert.deepEqual(urls, ['https://example.test/jobs/original-job/cancel']);
+  assert.equal((await tracker.start(seed, submit)).state, 'cancelling');
+  assert.equal(calls.uploads, 1);
+  options.readJob = async () => ({status: 'cancelled', progress: 'Cancelled'});
+  const restarted = new JobTracker(options);
+  assert.equal((await restarted.check(key, true)).state, 'cancelled');
+  await restarted.checkActive();
+  assert.equal(calls.downloads, 0);
+  await restarted.start(seed, submit);
+  assert.equal(calls.uploads, 2);
+});
+
+test("stale status read cannot undo an acknowledged cancellation or download a PDF", async () => {
+  const { tracker, submit, calls } = setup();
+  await tracker.start(seed, submit);
+  let release;
+  const reading = new Promise(resolve => { release = resolve; });
+  tracker.readJob = async () => reading;
+  tracker.cancelJob = async () => {
+    release({status: 'done'});
+    return {status: 'cancelled', progress: 'Cancelled'};
+  };
+  const check = tracker.check(key, true);
+  await new Promise(resolve => setImmediate(resolve));
+  await Promise.all([check, tracker.cancel(key)]);
+  assert.equal((await tracker.get(key)).state, 'cancelled');
+  assert.equal(calls.downloads, 0);
+});
+
+test("failed cancel request never falsely reports cancellation", async () => {
+  const { tracker, submit } = setup();
+  await tracker.start(seed, submit);
+  tracker.cancelJob = async () => { throw new Error('offline'); };
+  await assert.rejects(tracker.cancel(key), /offline/);
+  assert.equal((await tracker.get(key)).state, 'active');
+});

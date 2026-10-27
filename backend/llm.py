@@ -229,7 +229,7 @@ def _post_with_retries(provider: Provider, payload: dict) -> dict:
             pacing.limiter.defer((provider.base_url.rstrip("/"), model), wait)
             logger.warning("Rate limited; waiting %.0fs (attempt %d/%d)", wait, attempt, attempts)
             execution.report(f"AI rate limit: waiting {wait:.0f}s (attempt {attempt}/{attempts})…")
-            _sleep(min(wait, execution.remaining()))
+            execution.sleep(min(wait, execution.remaining()), _sleep)
             continue
         if status >= 500:
             if last_attempt:

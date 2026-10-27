@@ -13,6 +13,10 @@ const storage = {
 };
 const tracker = new JobTracker({
   storage, readJob, download: downloadPdf,
+  cancelJob: async (url) => {
+    const response = await fetchOk(url, { method: "POST", signal: AbortSignal.timeout(20000) });
+    return response.json();
+  },
   getDownload: async (id) => (await chrome.downloads.search({ id }))[0],
   onChange: (task) => {
     const text = task.state === "done" ? "✓" : ACTIVE_STATES.includes(task.state) ? "…" : "!";
@@ -42,6 +46,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     "get-url-task": getUrlTask,
     "get-task": getTask,
     "resume-task": resumeTask,
+    "cancel-task": async ({ key }) => ({ task: await tracker.cancel(key) }),
     feedback: sendFeedback,
   };
   if (!handlers[message.type]) return false;
@@ -85,7 +90,7 @@ async function getTask({ key }) {
 
 async function resumeTask({ key }) {
   const task = await tracker.get(key);
-  if (!task?.jobId || ["failed", "expired"].includes(task.state)) {
+  if (!task?.jobId || ["failed", "expired", "cancelled"].includes(task.state)) {
     throw new Error("Choose the file again to start a new summary.");
   }
   await ensureAlarm();
